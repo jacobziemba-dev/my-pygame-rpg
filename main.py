@@ -1,5 +1,8 @@
 
-#TODO: - Add a player character
+#TODO: - player class 
+    #TODO: - Add a way to move the player character
+    #TODO: - Add a way to jump the player character
+
 #TODO: - Add a way to win the game
 #TODO: - Add a way to lose the game
 #TODO: - Add a way to restart the game
