@@ -33,6 +33,7 @@ class GameManager:
         self.last_tick = pygame.time.get_ticks()
         
         self.running = True
+        self.game_over = False
 
     def _generate_resources(self):
         for _ in range(15):
@@ -61,6 +62,18 @@ class GameManager:
             ey = random.randint(50, 2350)
             self.enemies.append(Enemy(ex, ey))
 
+    def _restart(self):
+        self.game_over = False
+        self.player = Player(400, 300)
+        self.resources = []
+        self._generate_resources()
+        self.enemies = []
+        self._generate_enemies()
+        self.camera = Camera(800, 600, 2400, 2400)
+        self.ui = UIManager(self.player)
+        self.action_manager = ActionManager(self.ui)
+        self.last_tick = pygame.time.get_ticks()
+
     def run(self):
         while self.running:
             self.handle_events()
@@ -75,6 +88,11 @@ class GameManager:
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
+                # Game over screen — only listen for R to restart
+                if self.game_over:
+                    if event.key == pygame.K_r:
+                        self._restart()
+                    continue
                 # Crafting menu consumes input when open
                 if self.ui.show_crafting:
                     if event.key == pygame.K_ESCAPE or event.key == pygame.K_c:
@@ -120,6 +138,7 @@ class GameManager:
                         self.ui.show_message("No Save File found.")
                 elif event.key == pygame.K_c:
                     self.ui.show_crafting = True
+                    self.ui.show_skills = False
                     self.ui.crafting_index = 0
                 elif event.key == pygame.K_RETURN:
                     if self.player.equip("iron_sword"):
@@ -130,6 +149,8 @@ class GameManager:
                         self.ui.show_message("No sword in inventory to equip.")
                 elif event.key == pygame.K_k:
                     self.ui.show_skills = not self.ui.show_skills
+                    if self.ui.show_skills:
+                        self.ui.show_crafting = False
                 elif event.key == pygame.K_SPACE:
                     if self.player.hp > 0:
                         attack_rect = self.player.rect.inflate(40, 40)
@@ -174,7 +195,8 @@ class GameManager:
                     if self.player.take_damage(10):
                         self.ui.show_message("-10 HP!")
         else:
-            self.ui.show_message("GAME OVER. Restart application.")
+            if not self.game_over:
+                self.game_over = True
             
         self.camera.update(self.player)
         self.ui.update()
@@ -189,4 +211,14 @@ class GameManager:
             enemy.draw(self.screen, self.camera)
         self.player.draw(self.screen, self.camera)
         self.ui.draw(self.screen)
+        if self.game_over:
+            overlay = pygame.Surface((800, 600), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 160))
+            self.screen.blit(overlay, (0, 0))
+            go_font = pygame.font.SysFont(None, 64)
+            go_text = go_font.render("GAME OVER", True, (220, 50, 50))
+            self.screen.blit(go_text, go_text.get_rect(center=(400, 270)))
+            sub_font = pygame.font.SysFont(None, 32)
+            sub_text = sub_font.render("[R] Restart", True, (200, 200, 200))
+            self.screen.blit(sub_text, sub_text.get_rect(center=(400, 330)))
         pygame.display.update()

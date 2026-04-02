@@ -30,7 +30,10 @@ class UIManager:
         y_offset += 25
         
         for item, count in self.player.inventory.items.items():
-            item_surf = self.font.render(f"{item.capitalize()}: {count}", True, (200, 200, 200))
+            if count == 0:
+                continue
+            label = item.replace('_', ' ').title()
+            item_surf = self.font.render(f"{label}: {count}", True, (200, 200, 200))
             surface.blit(item_surf, (10, y_offset))
             y_offset += 25
 
@@ -55,11 +58,13 @@ class UIManager:
         hp_text = self.font.render(f"HP: {self.player.hp}/{self.player.max_hp}", True, (255, 255, 255))
         surface.blit(hp_text, (hp_x, hp_y - 20))
 
-        # Draw panel hints (top-right)
-        hint_surf = self.font.render("[K] Skills", True, (160, 160, 160))
-        surface.blit(hint_surf, (surface.get_width() - 90, 10))
-        hint2_surf = self.font.render("[C] Craft", True, (160, 160, 160))
-        surface.blit(hint2_surf, (surface.get_width() - 90, 30))
+        # Draw control hints (bottom-right)
+        hints = ["[E] Gather", "[Space] Attack", "[C] Craft", "[K] Skills", "[F5] Save", "[F9] Load"]
+        hint_x = surface.get_width() - 110
+        hint_y = surface.get_height() - len(hints) * 18 - 10
+        for i, hint in enumerate(hints):
+            hint_surf = self.font.render(hint, True, (110, 110, 110))
+            surface.blit(hint_surf, (hint_x, hint_y + i * 18))
 
         # Draw overlays
         if self.show_skills:

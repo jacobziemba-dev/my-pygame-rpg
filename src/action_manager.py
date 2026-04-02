@@ -51,3 +51,6 @@ class ActionManager:
             if leveled_up:
                 new_level = getattr(player.skills, skill_name).level
                 self.ui.show_message(f"{skill_name.capitalize()} level up! Now level {new_level}")
+        else:
+            if success_chance < 50:
+                self.ui.show_message(f"Miss! ({int(success_chance)}% chance)")

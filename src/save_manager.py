@@ -1,5 +1,6 @@
 import json
 import os
+import pygame
 from src.resource_item import ResourceItem
 from src.resource_node import ResourceNode
 from src.enemy import Enemy
@@ -24,8 +25,11 @@ class SaveManager:
             },
             "resources": [
                 {
-                    "class": "ResourceNode", "x": r.rect.x, "y": r.rect.y, "type": r.node_type, 
-                    "difficulty": r.difficulty, "tool_required": r.tool_required, "yields": r.yields, "max_hp": r.max_hp, "hp": r.hp, "respawn_time": r.respawn_time
+                    "class": "ResourceNode", "x": r.rect.x, "y": r.rect.y, "type": r.node_type,
+                    "difficulty": r.difficulty, "tool_required": r.tool_required, "yields": r.yields,
+                    "max_hp": r.max_hp, "hp": r.hp, "respawn_time": r.respawn_time,
+                    "is_active": r.is_active,
+                    "remaining_respawn_ms": max(0, r.respawn_time - (pygame.time.get_ticks() - r.dead_timer)) if not r.is_active else 0,
                 } if isinstance(r, ResourceNode) 
                 else { "class": "ResourceItem", "x": r.rect.x, "y": r.rect.y, "type": r.resource_type }
                 for r in resources
@@ -65,7 +69,13 @@ class SaveManager:
                     r_data["difficulty"], r_data["tool_required"], r_data["yields"], 
                     r_data["max_hp"], r_data["respawn_time"]
                 )
-                node.hp = r_data.get("hp", node.max_hp)
+                node.is_active = r_data.get("is_active", True)
+                if not node.is_active:
+                    remaining = r_data.get("remaining_respawn_ms", 0)
+                    node.dead_timer = pygame.time.get_ticks() - (node.respawn_time - remaining)
+                    node.hp = 0
+                else:
+                    node.hp = r_data.get("hp", node.max_hp)
                 resources.append(node)
             else:
                 resources.append(ResourceItem(r_data["x"], r_data["y"], r_data["type"]))

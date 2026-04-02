@@ -15,7 +15,6 @@ The player explores a world, collects resources, crafts items, fights enemies, a
 | **WASD** / **Arrow keys** | Move |
 | **E** | Collect resource |
 | **C** | Craft item |
-| **Q** | Drop item |
 | **Space** | Attack |
 | **F5** | Save game |
 | **F9** | Load game |
