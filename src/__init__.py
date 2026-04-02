@@ -6,6 +6,8 @@ from .resource_item import ResourceItem
 from .inventory import Inventory
 from .game_manager import GameManager
 from .enemy import Enemy
+from .camera import Camera
+from .save_manager import SaveManager
 
 
 

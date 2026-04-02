@@ -4,6 +4,8 @@ from src.player import Player
 from src.resource_item import ResourceItem
 from src.ui import UIManager
 from src.enemy import Enemy
+from src.camera import Camera
+from src.save_manager import SaveManager
 
 class GameManager:
     def __init__(self):
@@ -22,25 +24,31 @@ class GameManager:
         self.enemies = []
         self._generate_enemies()
         
+        self.camera = Camera(800, 600, 2400, 2400)
         self.ui = UIManager(self.player)
         
         self.running = True
 
     def _generate_resources(self):
-        for _ in range(10):
-            rx = random.randint(50, 750)
-            ry = random.randint(50, 550)
+        for _ in range(15):
+            rx = random.randint(50, 2350)
+            ry = random.randint(50, 2350)
             self.resources.append(ResourceItem(rx, ry, "wood"))
             
         for _ in range(10):
-            rx = random.randint(50, 750)
-            ry = random.randint(50, 550)
+            rx = random.randint(50, 2350)
+            ry = random.randint(50, 2350)
             self.resources.append(ResourceItem(rx, ry, "stone"))
+            
+        for _ in range(5):
+            rx = random.randint(50, 2350)
+            ry = random.randint(50, 2350)
+            self.resources.append(ResourceItem(rx, ry, "chest"))
 
     def _generate_enemies(self):
-        for _ in range(5):
-            ex = random.randint(50, 750)
-            ey = random.randint(50, 550)
+        for _ in range(15):
+            ex = random.randint(50, 2350)
+            ey = random.randint(50, 2350)
             self.enemies.append(Enemy(ex, ey))
 
     def run(self):
@@ -62,8 +70,21 @@ class GameManager:
                     for item in self.resources[:]:
                         if self.player.rect.colliderect(item.rect):
                             self.resources.remove(item)
-                            self.player.inventory.add_item(item.resource_type, 1)
-                            self.ui.show_message(f"Collected {item.resource_type}!")
+                            if item.resource_type == "chest":
+                                self.player.inventory.add_item("wood", 10)
+                                self.player.inventory.add_item("stone", 10)
+                                self.ui.show_message("Opened Chest! Huge Loot gained.")
+                            else:
+                                self.player.inventory.add_item(item.resource_type, 1)
+                                self.ui.show_message(f"Collected {item.resource_type}!")
+                elif event.key == pygame.K_F5:
+                    SaveManager.save_game(self.player, self.resources, self.enemies)
+                    self.ui.show_message("Game Saved Successfully!")
+                elif event.key == pygame.K_F9:
+                    if SaveManager.load_game(self.player, self.resources, self.enemies):
+                        self.ui.show_message("Game Loaded Successfully!")
+                    else:
+                        self.ui.show_message("No Save File found.")
                 elif event.key == pygame.K_c:
                     # Craft sword
                     if self.player.inventory.craft("sword"):
@@ -104,14 +125,17 @@ class GameManager:
         else:
             self.ui.show_message("GAME OVER. Restart application.")
             
+        self.camera.update(self.player)
         self.ui.update()
 
     def draw(self):
         self.screen.fill((0, 0, 0))
+        # Draw Map background 
+        pygame.draw.rect(self.screen, (20, 50, 20), self.camera.apply(pygame.Rect(0, 0, 2400, 2400))) 
         for item in self.resources:
-            item.draw(self.screen)
+            item.draw(self.screen, self.camera)
         for enemy in self.enemies:
-            enemy.draw(self.screen)
-        self.player.draw(self.screen)
+            enemy.draw(self.screen, self.camera)
+        self.player.draw(self.screen, self.camera)
         self.ui.draw(self.screen)
         pygame.display.update()

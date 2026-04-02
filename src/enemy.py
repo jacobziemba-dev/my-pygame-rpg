@@ -23,19 +23,20 @@ class Enemy:
             self.rect.x += dx_norm * self.speed
             self.rect.y += dy_norm * self.speed
             
-    def draw(self, surface):
+    def draw(self, surface, camera=None):
+        draw_rect = camera.apply(self.rect) if camera else self.rect
         if self.image:
-             surface.blit(self.image, self.rect)
+             surface.blit(self.image, draw_rect)
         else:
-            pygame.draw.rect(surface, self.color, self.rect)
+            pygame.draw.rect(surface, self.color, draw_rect)
             
         if self.hp < self.max_hp:
             bar_width = 30
             bar_height = 5
             fill = (self.hp / self.max_hp) * bar_width
             
-            x = self.rect.centerx - (bar_width // 2)
-            y = self.rect.top - 10
+            x = draw_rect.centerx - (bar_width // 2)
+            y = draw_rect.top - 10
             
             pygame.draw.rect(surface, (255, 0, 0), (x, y, bar_width, bar_height))
             pygame.draw.rect(surface, (0, 255, 0), (x, y, fill, bar_height))

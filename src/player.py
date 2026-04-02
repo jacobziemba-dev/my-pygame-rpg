@@ -39,18 +39,19 @@ class Player:
         if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
             self.rect.x += self.speed
             
-        self.rect.clamp_ip(pygame.Rect(0, 0, 800, 600))
+        self.rect.clamp_ip(pygame.Rect(0, 0, 2400, 2400))
 
-    def draw(self, surface): #* draw function is used to draw the player character on the screen
+    def draw(self, surface, camera=None): #* draw function is used to draw the player character on the screen
         # Flash player transparent if they were hit recently
         current_time = pygame.time.get_ticks()
         if current_time - self.last_hit_time < 1000 and (current_time // 100) % 2 == 0:
             return
 
+        draw_rect = camera.apply(self.rect) if camera else self.rect
         if self.image:
-            surface.blit(self.image, self.rect)
+            surface.blit(self.image, draw_rect)
         else:
-            pygame.draw.rect(surface, self.color, self.rect)
+            pygame.draw.rect(surface, self.color, draw_rect)
 
     def take_damage(self, amount):
         current_time = pygame.time.get_ticks()

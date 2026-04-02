@@ -25,8 +25,9 @@ class ResourceItem:
             except pygame.error:
                 pass
             
-    def draw(self, surface):
+    def draw(self, surface, camera=None):
+        draw_rect = camera.apply(self.rect) if camera else self.rect
         if self.image:
-            surface.blit(self.image, self.rect)
+            surface.blit(self.image, draw_rect)
         else:
-            pygame.draw.rect(surface, self.color, self.rect)
+            pygame.draw.rect(surface, self.color, draw_rect)
