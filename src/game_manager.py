@@ -98,7 +98,8 @@ class GameManager:
                 elif event.key == pygame.K_c:
                     # Craft sword
                     if self.player.inventory.craft("sword"):
-                        self.ui.show_message("Success! Sword crafted.")
+                        self.player.skills.gain_xp("crafting", 10)
+                        self.ui.show_message("Success! Sword crafted. (+10 Crafting XP)")
                     else:
                         self.ui.show_message("Failed to craft sword. Need 1 wood and 1 stone.")
                 elif event.key == pygame.K_RETURN:
@@ -106,6 +107,8 @@ class GameManager:
                         self.ui.show_message("Sword equipped! Attack +5")
                     else:
                         self.ui.show_message("No sword in inventory to equip.")
+                elif event.key == pygame.K_k:
+                    self.ui.show_skills = not self.ui.show_skills
                 elif event.key == pygame.K_SPACE:
                     if self.player.hp > 0:
                         attack_rect = self.player.rect.inflate(40, 40)
@@ -117,10 +120,14 @@ class GameManager:
                                 if enemy.hp <= 0:
                                     self.enemies.remove(enemy)
                                     self.resources.append(ResourceItem(enemy.rect.x, enemy.rect.y, "wood"))
-                                    if self.player.gain_xp(15):
-                                        self.ui.show_message("LEVEL UP! Enemy defeated.")
+                                    leveled_up = self.player.skills.gain_xp("melee", 15)
+                                    if leveled_up:
+                                        self.player.max_hp += 10
+                                        self.player.hp = min(self.player.hp + 10, self.player.max_hp)
+                                        self.player.base_attack += 2
+                                        self.ui.show_message("Melee level up! +10 HP, +2 ATK")
                                     else:
-                                        self.ui.show_message("Enemy defeated! +15 XP")
+                                        self.ui.show_message("Enemy defeated! +15 Melee XP")
                                 break
 
     def update(self):

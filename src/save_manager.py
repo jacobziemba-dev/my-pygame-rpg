@@ -3,6 +3,7 @@ import os
 from src.resource_item import ResourceItem
 from src.resource_node import ResourceNode
 from src.enemy import Enemy
+from src.skill_manager import SkillManager
 
 SAVE_FILE = "save.json"
 
@@ -15,12 +16,11 @@ class SaveManager:
                 "y": player.rect.y,
                 "hp": player.hp,
                 "max_hp": player.max_hp,
-                "xp": getattr(player, 'xp', 0),
-                "level": getattr(player, 'level', 1),
                 "base_attack": getattr(player, 'base_attack', 5),
                 "base_defense": getattr(player, 'base_defense', 0),
                 "equipped_items": getattr(player, 'equipped_items', []),
-                "inventory": player.inventory.items
+                "inventory": player.inventory.items,
+                "skills": player.skills.to_dict()
             },
             "resources": [
                 {
@@ -50,12 +50,11 @@ class SaveManager:
         player.rect.y = p_data["y"]
         player.hp = p_data["hp"]
         player.max_hp = p_data["max_hp"]
-        player.xp = p_data.get("xp", 0)
-        player.level = p_data.get("level", 1)
         player.base_attack = p_data.get("base_attack", 5)
         player.base_defense = p_data.get("base_defense", 0)
         player.equipped_items = p_data.get("equipped_items", [])
         player.inventory.items = p_data.get("inventory", {})
+        player.skills = SkillManager.from_dict(p_data.get("skills", {}))
         
         # load resources
         resources.clear()

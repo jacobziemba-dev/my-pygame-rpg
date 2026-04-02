@@ -36,13 +36,18 @@ class ActionManager:
             player.action_target = None
             return
             
-        success_chance = ((tool_power + player.level) / node.difficulty) * 100
+        skill_name = "woodcutting" if node.node_type == "tree" else "mining"
+        skill_level = getattr(player.skills, skill_name).level
+        success_chance = ((tool_power + skill_level) / node.difficulty) * 100
         success_chance = max(5, min(95, success_chance))
-        
+
         roll = random.uniform(0, 100)
-        
+
         if roll <= success_chance:
             node.take_hit()
             player.inventory.add_item(node.yields, 1)
-            player.gain_xp(5)
-            self.ui.show_message(f"Gained 1 {node.yields}! (+5 XP)")
+            leveled_up = player.skills.gain_xp(skill_name, 5)
+            self.ui.show_message(f"Gained 1 {node.yields}! (+5 {skill_name.capitalize()} XP)")
+            if leveled_up:
+                new_level = getattr(player.skills, skill_name).level
+                self.ui.show_message(f"{skill_name.capitalize()} level up! Now level {new_level}")

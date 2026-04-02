@@ -10,6 +10,7 @@ class UIManager:
         self.message = ""
         self.message_timer = 0
         self.message_duration = 3000 # 3 seconds in ms
+        self.show_skills = False
 
     def show_message(self, text):
         self.message = text
@@ -39,7 +40,9 @@ class UIManager:
         fill = (self.player.hp / self.player.max_hp) * hp_bar_width
         
         # Draw Player Stats
-        stats_text = f"Level {self.player.level} (XP: {self.player.xp}/{self.player.level * 50}) | ATK: {self.player.get_attack()} | DEF: {self.player.get_defense()}"
+        melee = self.player.skills.melee
+        stats_text = (f"Melee Lv.{melee.level} (XP: {melee.xp}/{melee.xp_threshold()}) "
+                      f"| ATK: {self.player.get_attack()} | DEF: {self.player.get_defense()}")
         stats_surf = self.font.render(stats_text, True, (255, 215, 0)) # Gold Text
         surface.blit(stats_surf, (hp_x, hp_y - 45))
         
@@ -50,8 +53,34 @@ class UIManager:
         hp_text = self.font.render(f"HP: {self.player.hp}/{self.player.max_hp}", True, (255, 255, 255))
         surface.blit(hp_text, (hp_x, hp_y - 20))
 
+        # Draw Skills panel hint
+        hint_surf = self.font.render("[K] Skills", True, (160, 160, 160))
+        surface.blit(hint_surf, (surface.get_width() - 90, 10))
+
+        # Draw Skills overlay
+        if self.show_skills:
+            self._draw_skills_panel(surface)
+
         # Draw Message
         if self.message:
             msg_surf = self.large_font.render(self.message, True, (255, 255, 0))
             msg_rect = msg_surf.get_rect(center=(surface.get_width() // 2, 50))
             surface.blit(msg_surf, msg_rect)
+
+    def _draw_skills_panel(self, surface):
+        panel_w, panel_h = 220, 140
+        panel_x = surface.get_width() - panel_w - 10
+        panel_y = 30
+
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel.fill((0, 0, 0, 180))
+        surface.blit(panel, (panel_x, panel_y))
+
+        title = self.font.render("Skills", True, (255, 215, 0))
+        surface.blit(title, (panel_x + 8, panel_y + 6))
+
+        for i, skill in enumerate(self.player.skills.all_skills()):
+            row_y = panel_y + 28 + i * 26
+            label = f"{skill.name:<14} Lv.{skill.level:<3} XP: {skill.xp}/{skill.xp_threshold()}"
+            text_surf = self.font.render(label, True, (220, 220, 220))
+            surface.blit(text_surf, (panel_x + 8, row_y))

@@ -1,6 +1,7 @@
 import pygame
 import os
 from src.inventory import Inventory
+from src.skill_manager import SkillManager
 
 class Player: 
     def __init__(self, x, y): #* __init__ is the constructor for the Player class
@@ -13,8 +14,7 @@ class Player:
         self.hp = 100
         self.last_hit_time = 0
         
-        self.xp = 0
-        self.level = 1
+        self.skills = SkillManager()
         self.base_attack = 5
         self.base_defense = 0
         self.equipped_items = []
@@ -90,20 +90,6 @@ class Player:
 
     def get_defense(self):
         return self.base_defense
-
-    def gain_xp(self, amount):
-        self.xp += amount
-        threshold = self.level * 50
-        leveled_up = False
-        while self.xp >= threshold:
-            self.xp -= threshold
-            self.level += 1
-            self.max_hp += 10
-            self.hp = self.max_hp
-            self.base_attack += 2
-            threshold = self.level * 50
-            leveled_up = True
-        return leveled_up
 
     def equip(self, item_name):
         if self.inventory.items.get(item_name, 0) > 0:
