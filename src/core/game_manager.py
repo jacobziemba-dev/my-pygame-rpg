@@ -23,8 +23,7 @@ class GameManager:
         self.clock = pygame.time.Clock()
         
         # Game objects
-        self.player = Player(PLAYER_START_X, PLAYER_START_Y)
-        self.player.game_manager = self
+        self.player = Player(PLAYER_START_X, PLAYER_START_Y, self)
         self.resources = []
         self._generate_resources()
         
@@ -66,8 +65,7 @@ class GameManager:
 
     def _restart(self):
         self.game_over = False
-        self.player = Player(PLAYER_START_X, PLAYER_START_Y)
-        self.player.game_manager = self
+        self.player = Player(PLAYER_START_X, PLAYER_START_Y, self)
         self.resources = []
         self._generate_resources()
         self.enemies = []
@@ -79,10 +77,10 @@ class GameManager:
 
     def run(self):
         while self.running:
+            dt = self.clock.tick(FPS) / 1000
             self.handle_events()
-            self.update()
+            self.update(dt)
             self.draw()
-            self.clock.tick(60)
             
         pygame.quit()
 
@@ -340,10 +338,10 @@ class GameManager:
                         self.ui.show_message("Enemy defeated!")
                 return
 
-    def update(self):
+    def update(self, dt):
         if self.player.hp > 0:
             if not self.ui.show_crafting:
-                self.player.update()
+                self.player.update(dt)
             
             for crop in self.crops:
                 crop.update()
@@ -382,7 +380,6 @@ class GameManager:
                                # Out of range
                                self.player.current_action = None
                                self.player.action_target = None
-
             
             # Nodes updates (respawn ticks)
             for item in self.resources:
@@ -390,7 +387,7 @@ class GameManager:
                     item.update()
             
             for enemy in self.enemies:
-                enemy.update(self.player)
+                enemy.update(self.player, dt)
                 if enemy.rect.colliderect(self.player.rect):
                     if self.player.take_damage(10):
                         self.ui.show_message("-10 HP!")

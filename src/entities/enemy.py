@@ -1,10 +1,11 @@
 import math
 import pygame
 from src.core.settings import *
+from src.entities.entity import Entity
 
-class Enemy:
+class Enemy(Entity):
     def __init__(self, x, y):
-        self.rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE)
+        super().__init__(x, y, TILE_SIZE, TILE_SIZE)
         self.color = COLOR_ENEMY
         self.hp = 30
         self.max_hp = 30
@@ -13,7 +14,7 @@ class Enemy:
         
         self.image = None
 
-    def update(self, player):
+    def update(self, player, dt):
         dx = player.rect.centerx - self.rect.centerx
         dy = player.rect.centery - self.rect.centery
         dist = math.hypot(dx, dy)
@@ -21,15 +22,12 @@ class Enemy:
         if 0 < dist < self.aggro_range:
             dx_norm = dx / dist
             dy_norm = dy / dist
-            self.rect.x += dx_norm * self.speed
-            self.rect.y += dy_norm * self.speed
+            self.rect.x += dx_norm * self.speed * dt * 60
+            self.rect.y += dy_norm * self.speed * dt * 60
             
     def draw(self, surface, camera=None):
+        super().draw(surface, camera)
         draw_rect = camera.apply(self.rect) if camera else self.rect
-        if self.image:
-             surface.blit(self.image, draw_rect)
-        else:
-            pygame.draw.rect(surface, self.color, draw_rect)
             
         if self.hp < self.max_hp:
             bar_width = 30

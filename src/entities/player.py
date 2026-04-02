@@ -4,10 +4,11 @@ import math
 from src.systems.inventory import Inventory
 from src.systems.skill_manager import SkillManager
 from src.core.settings import *
+from src.entities.entity import Entity
 
-class Player: 
-    def __init__(self, x, y):
-        self.rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE) 
+class Player(Entity): 
+    def __init__(self, x, y, game_manager):
+        super().__init__(x, y, TILE_SIZE, TILE_SIZE, game_manager)
         self.color = COLOR_PLAYER
         self.speed = PLAYER_SPEED
         self.inventory = Inventory()
@@ -29,6 +30,13 @@ class Player:
         self.target_destination = None
         self.interaction_target = None
         
+        # Animations
+        self.import_assets()
+        self.status = 'idle'
+        self.frame_index = 0
+        self.animation_speed = 0.15
+        self.direction = pygame.math.Vector2()
+        
         # Grant starting tools
         self.inventory.add_item("bronze_axe", 1)
         self.inventory.add_item("bronze_pickaxe", 1)
@@ -36,13 +44,42 @@ class Player:
         self.inventory.add_item("wheat_seeds", 5)
 
         self.image = None
-        sprite_path = os.path.join("assets", "sprites", "player.png")
-        if os.path.exists(sprite_path):
-            try:
-                self.image = pygame.image.load(sprite_path).convert_alpha()
-                self.image = pygame.transform.scale(self.image, (self.rect.width, self.rect.height))
-            except pygame.error:
-                pass
+
+    def import_assets(self):
+        self.animations = {
+            'idle': [], 'walk_up': [], 'walk_down': [], 'walk_left': [], 'walk_right': [],
+            'attack_up': [], 'attack_down': [], 'attack_left': [], 'attack_right': []
+        }
+        self.load_animations('assets/sprites/player', (TILE_SIZE, TILE_SIZE))
+
+    def get_status(self):
+        # Action status
+        if self.current_action == "attacking":
+            if 'attack' not in self.status:
+                self.status = self.status.replace('walk', 'attack').replace('idle', 'attack')
+                if 'attack' not in self.status:
+                    self.status = 'attack_down'
+        else:
+            if self.direction.magnitude() == 0:
+                self.status = 'idle'
+            else:
+                if abs(self.direction.x) > abs(self.direction.y):
+                    if self.direction.x > 0: self.status = 'walk_right'
+                    else: self.status = 'walk_left'
+                else:
+                    if self.direction.y > 0: self.status = 'walk_down'
+                    else: self.status = 'walk_up'
+
+    def animate(self, dt):
+        animation = self.animations.get(self.status, self.animations['idle'])
+        if not animation:
+            return
+
+        self.frame_index += self.animation_speed * dt * 60
+        if self.frame_index >= len(animation):
+            self.frame_index = 0
+
+        self.image = animation[int(self.frame_index)]
 
     def set_target_destination(self, x, y, target_entity=None):
         self.target_destination = (x, y)
@@ -50,8 +87,9 @@ class Player:
         self.current_action = None
         self.action_target = None
 
-    def update(self):
+    def update(self, dt):
         moved = False
+        self.direction.xy = (0, 0)
         if self.target_destination:
             tx, ty = self.target_destination
             dx = tx - self.rect.centerx
@@ -62,8 +100,10 @@ class Player:
             if dist > self.speed:
                 dx_norm = dx / dist
                 dy_norm = dy / dist
-                self.rect.x += dx_norm * self.speed
-                self.rect.y += dy_norm * self.speed
+                self.direction.x = dx_norm
+                self.direction.y = dy_norm
+                self.rect.x += dx_norm * self.speed * dt * 60
+                self.rect.y += dy_norm * self.speed * dt * 60
                 moved = True
             else:
                 self.rect.centerx = tx
@@ -113,25 +153,32 @@ class Player:
         # Keyboard fallback
         keys = pygame.key.get_pressed()
         if keys[pygame.K_w] or keys[pygame.K_UP]:
-            self.rect.y -= self.speed
+            self.direction.y = -1
+            self.rect.y -= self.speed * dt * 60
             moved = True
             self.target_destination = None
         if keys[pygame.K_s] or keys[pygame.K_DOWN]:
-            self.rect.y += self.speed
+            self.direction.y = 1
+            self.rect.y += self.speed * dt * 60
             moved = True
             self.target_destination = None
         if keys[pygame.K_a] or keys[pygame.K_LEFT]:
-            self.rect.x -= self.speed
+            self.direction.x = -1
+            self.rect.x -= self.speed * dt * 60
             moved = True
             self.target_destination = None
         if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-            self.rect.x += self.speed
+            self.direction.x = 1
+            self.rect.x += self.speed * dt * 60
             moved = True
             self.target_destination = None
             
         if moved and self.current_action is not None and not self.target_destination:
             self.current_action = None
             self.action_target = None
+
+        self.get_status()
+        self.animate(dt)
             
         self.rect.clamp_ip(pygame.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
 
@@ -141,11 +188,7 @@ class Player:
         if current_time - self.last_hit_time < 1000 and (current_time // 100) % 2 == 0:
             return
 
-        draw_rect = camera.apply(self.rect) if camera else self.rect
-        if self.image:
-            surface.blit(self.image, draw_rect)
-        else:
-            pygame.draw.rect(surface, self.color, draw_rect)
+        super().draw(surface, camera)
 
         # Draw movement target indicator
         if self.target_destination:
