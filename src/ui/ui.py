@@ -1,11 +1,12 @@
 import pygame
 import os
-from src.systems.inventory import RECIPES
+from src.systems.recipe_manager import RecipeManager
 from src.core.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 
 class UIManager:
     def __init__(self, player):
         self.player = player
+        self.recipe_manager = RecipeManager()
         pygame.font.init() # Ensure font module is initialized
         self.font = pygame.font.SysFont(None, 24)
         self.small_font = pygame.font.SysFont(None, 18)
@@ -152,7 +153,7 @@ class UIManager:
         panel_y = (SCREEN_HEIGHT - panel_h) // 2
         list_top = panel_y + 54
         
-        for i, recipe in enumerate(RECIPES):
+        for i, recipe in enumerate(self.recipe_manager.get_all()):
             row_y = list_top + i * 22
             if row_y > panel_y + panel_h - 86:
                 break
@@ -235,7 +236,7 @@ class UIManager:
         surface.blit(controls, (panel_x + 10, panel_y + 28))
         pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + 48), (panel_x + panel_w, panel_y + 48))
 
-        recipes = [r for r in RECIPES if r.get("station") == self.active_station.station_type]
+        recipes = self.recipe_manager.get_for_station(self.active_station.station_type)
 
         # Recipe list
         list_top = panel_y + 54
@@ -285,7 +286,7 @@ class UIManager:
         crafting_level = self.player.skills.crafting.level
 
         # Filter out station recipes
-        recipes = [r for r in RECIPES if not r.get("station")]
+        recipes = self.recipe_manager.get_handcrafted()
 
         # Recipe list
         list_top = panel_y + 54

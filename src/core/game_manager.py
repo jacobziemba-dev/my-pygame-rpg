@@ -11,7 +11,7 @@ from src.entities.crop import Crop
 from src.core.camera import Camera
 from src.systems.save_manager import SaveManager
 from src.systems.action_manager import ActionManager
-from src.systems.inventory import RECIPES
+from src.systems.recipe_manager import RecipeManager
 from src.core.settings import *
 
 class GameManager:
@@ -38,12 +38,15 @@ class GameManager:
         self.stations.append(Station(PLAYER_START_X + 150, PLAYER_START_Y + 50, "workbench", "Workbench"))
 
         self.crops = []
-        
+        self.recipe_manager = RecipeManager()
+
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
         self.ui = UIManager(self.player)
         self.action_manager = ActionManager(self.ui)
         self.last_tick = pygame.time.get_ticks()
-        
+        self._last_frame_ms = 0.0
+        self.show_fps_overlay = True  # F3 toggles; issue #10 dev diagnostics
+
         self.running = True
         self.game_over = False
 
@@ -83,7 +86,9 @@ class GameManager:
 
     def run(self):
         while self.running:
-            dt = self.clock.tick(FPS) / 1000
+            frame_ms = float(self.clock.tick(FPS))
+            self._last_frame_ms = frame_ms
+            dt = frame_ms / 1000.0
             self.handle_events()
             self.update(dt)
             self.draw()
@@ -172,10 +177,10 @@ class GameManager:
                         self.ui.show_message(f"Dropped 1 {item_name.replace('_', ' ').title()}")
                 elif action == "craft_item":
                     # For normal crafting menu
-                    recipes = [r for r in RECIPES if not r.get("station")]
+                    recipes = self.recipe_manager.get_handcrafted()
                     if 0 <= index < len(recipes):
                         recipe = recipes[index]
-                        success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level)
+                        success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level, self.recipe_manager)
                         if success:
                             self.player.skills.gain_xp("crafting", result)
                             self.ui.show_message(f"{recipe['label']} crafted! (+{result} Crafting XP)")
@@ -187,6 +192,12 @@ class GameManager:
                              self.handle_world_click(event.pos, event.button)
 
             elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_F3:
+                    self.show_fps_overlay = not self.show_fps_overlay
+                    continue
+                if event.mod & pygame.KMOD_CTRL and event.key == pygame.K_q:
+                    self.running = False
+                    continue
                 if self.game_over:
                     if event.key == pygame.K_r: self._restart()
                     continue
@@ -206,7 +217,7 @@ class GameManager:
         if event.key == pygame.K_ESCAPE or event.key == pygame.K_c:
             self.ui.show_crafting = False
         else:
-            recipes = [r for r in RECIPES if not r.get("station")]
+            recipes = self.recipe_manager.get_handcrafted()
             if event.key == pygame.K_UP:
                 self.ui.crafting_index = max(0, self.ui.crafting_index - 1)
             elif event.key == pygame.K_DOWN:
@@ -214,7 +225,7 @@ class GameManager:
             elif event.key == pygame.K_RETURN:
                 if 0 <= self.ui.crafting_index < len(recipes):
                     recipe = recipes[self.ui.crafting_index]
-                    success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level)
+                    success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level, self.recipe_manager)
                     if success:
                         self.player.skills.gain_xp("crafting", result)
                         self.ui.show_message(f"{recipe['label']} crafted! (+{result} Crafting XP)")
@@ -262,10 +273,10 @@ class GameManager:
         elif event.key == pygame.K_UP:
             self.ui.station_index = max(0, self.ui.station_index - 1)
         elif event.key == pygame.K_DOWN:
-            recipes = [r for r in RECIPES if r.get("station") == station.station_type]
+            recipes = self.recipe_manager.get_for_station(station.station_type)
             self.ui.station_index = min(len(recipes) - 1, self.ui.station_index + 1)
         elif event.key == pygame.K_RETURN:
-            recipes = [r for r in RECIPES if r.get("station") == station.station_type]
+            recipes = self.recipe_manager.get_for_station(station.station_type)
             if 0 <= self.ui.station_index < len(recipes):
                 recipe = recipes[self.ui.station_index]
                 # Start processing if we have items
@@ -493,4 +504,9 @@ class GameManager:
             sub_font = pygame.font.SysFont(None, 32)
             sub_text = sub_font.render("[R] Restart", True, (200, 200, 200))
             self.screen.blit(sub_text, sub_text.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() // 2 + 30)))
+        if self.show_fps_overlay:
+            hud = pygame.font.SysFont(None, 22)
+            fps = self.clock.get_fps()
+            line = f"FPS: {fps:.0f}  frame: {self._last_frame_ms:.1f} ms  (F3 hide)"
+            self.screen.blit(hud.render(line, True, (180, 220, 180)), (8, 8))
         pygame.display.update()
