@@ -1,33 +1,40 @@
 import pygame
 import random
-from src.player import Player
-from src.resource_item import ResourceItem
-from src.resource_node import ResourceNode
-from src.ui import UIManager
-from src.enemy import Enemy
-from src.camera import Camera
-from src.save_manager import SaveManager
-from src.action_manager import ActionManager
-from src.inventory import RECIPES
+from src.entities.player import Player
+from src.entities.resource_item import ResourceItem
+from src.entities.resource_node import ResourceNode
+from src.ui.ui import UIManager
+from src.entities.enemy import Enemy
+from src.entities.chest import Chest
+from src.entities.crop import Crop
+from src.core.camera import Camera
+from src.systems.save_manager import SaveManager
+from src.systems.action_manager import ActionManager
+from src.systems.inventory import RECIPES
+from src.core.settings import *
 
 class GameManager:
     def __init__(self):
         pygame.init()
         
         # Display setup
-        self.screen = pygame.display.set_mode((800, 600))
-        pygame.display.set_caption("My Pygame RPG")
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption(TITLE)
         self.clock = pygame.time.Clock()
         
         # Game objects
-        self.player = Player(400, 300)
+        self.player = Player(PLAYER_START_X, PLAYER_START_Y)
+        self.player.game_manager = self
         self.resources = []
         self._generate_resources()
         
         self.enemies = []
         self._generate_enemies()
+
+        self.placed_chests = []
+        self.crops = []
         
-        self.camera = Camera(800, 600, 2400, 2400)
+        self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
         self.ui = UIManager(self.player)
         self.action_manager = ActionManager(self.ui)
         self.last_tick = pygame.time.get_ticks()
@@ -36,40 +43,41 @@ class GameManager:
         self.game_over = False
 
     def _generate_resources(self):
-        for _ in range(15):
-            rx = random.randint(50, 2350)
-            ry = random.randint(50, 2350)
+        for _ in range(NUM_TREES):
+            rx = random.randint(50, MAP_WIDTH - 50)
+            ry = random.randint(50, MAP_HEIGHT - 50)
             self.resources.append(ResourceNode(rx, ry, "tree", 20, "axe", "wood", hp=5, respawn_time=15000))
             
-        for _ in range(10):
-            rx = random.randint(50, 2350)
-            ry = random.randint(50, 2350)
+        for _ in range(NUM_ROCKS):
+            rx = random.randint(50, MAP_WIDTH - 50)
+            ry = random.randint(50, MAP_HEIGHT - 50)
             self.resources.append(ResourceNode(rx, ry, "rock", 35, "pickaxe", "stone", hp=3, respawn_time=20000))
 
-        for _ in range(8):
-            rx = random.randint(50, 2350)
-            ry = random.randint(50, 2350)
+        for _ in range(NUM_IRON_ROCKS):
+            rx = random.randint(50, MAP_WIDTH - 50)
+            ry = random.randint(50, MAP_HEIGHT - 50)
             self.resources.append(ResourceNode(rx, ry, "iron_rock", 50, "pickaxe", "iron_ore", hp=3, respawn_time=30000))
             
-        for _ in range(5):
-            rx = random.randint(50, 2350)
-            ry = random.randint(50, 2350)
+        for _ in range(NUM_CHESTS):
+            rx = random.randint(50, MAP_WIDTH - 50)
+            ry = random.randint(50, MAP_HEIGHT - 50)
             self.resources.append(ResourceItem(rx, ry, "chest"))
 
     def _generate_enemies(self):
-        for _ in range(15):
-            ex = random.randint(50, 2350)
-            ey = random.randint(50, 2350)
+        for _ in range(NUM_ENEMIES):
+            ex = random.randint(50, MAP_WIDTH - 50)
+            ey = random.randint(50, MAP_HEIGHT - 50)
             self.enemies.append(Enemy(ex, ey))
 
     def _restart(self):
         self.game_over = False
-        self.player = Player(400, 300)
+        self.player = Player(PLAYER_START_X, PLAYER_START_Y)
+        self.player.game_manager = self
         self.resources = []
         self._generate_resources()
         self.enemies = []
         self._generate_enemies()
-        self.camera = Camera(800, 600, 2400, 2400)
+        self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
         self.ui = UIManager(self.player)
         self.action_manager = ActionManager(self.ui)
         self.last_tick = pygame.time.get_ticks()
@@ -110,8 +118,32 @@ class GameManager:
                         else:
                             self.ui.show_message(result)
                     continue
+                # Chest menu consumes input when open
+                if self.ui.active_chest:
+                    if event.key == pygame.K_ESCAPE or event.key == pygame.K_e:
+                        self.ui.active_chest = False
+                    elif event.key == pygame.K_t:
+                        # Deposit everything from player inventory to chest
+                        for item, count in list(self.player.inventory.items.items()):
+                            if count > 0:
+                                self.ui.active_chest.inventory.add_item(item, count)
+                                self.player.inventory.items[item] = 0
+                        self.ui.show_message("Deposited all items into chest.")
+                    continue
                 if event.key == pygame.K_e:
                     # Collect resource or start action
+                    interaction_found = False
+                    # Check for chests first
+                    for chest in self.placed_chests:
+                        if self.player.rect.inflate(10, 10).colliderect(chest.rect):
+                            self.ui.active_chest = chest
+                            self.ui.show_message("Opened chest storage.")
+                            interaction_found = True
+                            break
+                    
+                    if interaction_found:
+                        continue
+
                     for item in self.resources[:]:
                         if self.player.rect.colliderect(item.rect):
                             if isinstance(item, ResourceItem) and item.resource_type == "chest":
@@ -128,6 +160,53 @@ class GameManager:
                                 self.player.action_target = item
                                 self.ui.show_message(f"Started gathering {item.node_type}...")
                             break
+                elif event.key == pygame.K_f:
+                    # Farming interaction
+                    grid_x = (self.player.rect.centerx // TILE_SIZE) * TILE_SIZE
+                    grid_y = (self.player.rect.centery // TILE_SIZE) * TILE_SIZE
+                    
+                    target_crop = next((c for c in self.crops if c.rect.topleft == (grid_x, grid_y)), None)
+                    
+                    if target_crop:
+                        if target_crop.is_mature:
+                            self.crops.remove(target_crop)
+                            self.player.inventory.add_item("wheat", 3)
+                            leveled_up = self.player.skills.gain_xp("farming", 20)
+                            self.ui.show_message(f"Harvested {target_crop.crop_type}! (+20 Farming XP)")
+                            if leveled_up:
+                                self.ui.show_message("Farming Level UP!")
+                        else:
+                            self.ui.show_message(f"Crop is still growing... (Stage {target_crop.growth_stage}/{target_crop.max_growth})")
+                    else:
+                        # No crop here, check for tilling or planting
+                        if self.player.inventory.items.get("bronze_hoe", 0) > 0:
+                            # Plant seed if player has them
+                            if self.player.inventory.items.get("wheat_seeds", 0) > 0:
+                                new_crop = Crop(grid_x, grid_y)
+                                self.crops.append(new_crop)
+                                self.player.inventory.remove_item("wheat_seeds", 1)
+                                self.ui.show_message("Tilled and planted wheat seeds!")
+                            else:
+                                self.ui.show_message("Need seeds to plant here.")
+                        else:
+                            self.ui.show_message("Need a hoe to till this soil.")
+                elif event.key == pygame.K_p:
+                    # Place a chest if the player has one in inventory
+                    if self.player.inventory.items.get("chest_item", 0) > 0:
+                        # Find the current tile position (32x32 grid)
+                        grid_x = (self.player.rect.centerx // TILE_SIZE) * TILE_SIZE
+                        grid_y = (self.player.rect.centery // TILE_SIZE) * TILE_SIZE
+                        
+                        already_has_chest = any(c.rect.topleft == (grid_x, grid_y) for c in self.placed_chests)
+                        if not already_has_chest:
+                            new_chest = Chest(grid_x, grid_y)
+                            self.placed_chests.append(new_chest)
+                            self.player.inventory.remove_item("chest_item", 1)
+                            self.ui.show_message(f"Chest placed at ({grid_x}, {grid_y})!")
+                        else:
+                            self.ui.show_message("Already a chest at this location!")
+                    else:
+                        self.ui.show_message("No chest in inventory.")
                 elif event.key == pygame.K_F5:
                     SaveManager.save_game(self.player, self.resources, self.enemies)
                     self.ui.show_message("Game Saved Successfully!")
@@ -177,6 +256,9 @@ class GameManager:
             if not self.ui.show_crafting:
                 self.player.update()
             
+            for crop in self.crops:
+                crop.update()
+            
             # Action Manager Ticks (once per 1000ms)
             current_time = pygame.time.get_ticks()
             if current_time - self.last_tick >= 1000:
@@ -207,8 +289,12 @@ class GameManager:
         pygame.draw.rect(self.screen, (20, 50, 20), self.camera.apply(pygame.Rect(0, 0, 2400, 2400))) 
         for item in self.resources:
             item.draw(self.screen, self.camera)
+        for crop in self.crops:
+            crop.draw(self.screen, self.camera)
         for enemy in self.enemies:
             enemy.draw(self.screen, self.camera)
+        for chest in self.placed_chests:
+            chest.draw(self.screen, self.camera)
         self.player.draw(self.screen, self.camera)
         self.ui.draw(self.screen)
         if self.game_over:

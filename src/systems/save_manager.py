@@ -1,12 +1,14 @@
 import json
 import os
 import pygame
-from src.resource_item import ResourceItem
-from src.resource_node import ResourceNode
-from src.enemy import Enemy
-from src.skill_manager import SkillManager
+from src.entities.resource_item import ResourceItem
+from src.entities.resource_node import ResourceNode
+from src.entities.enemy import Enemy
+from src.entities.chest import Chest
+from src.entities.crop import Crop
+from src.systems.skill_manager import SkillManager
 
-SAVE_FILE = "save.json"
+SAVE_FILE = os.path.join("data", "save.json")
 
 class SaveManager:
     @staticmethod
@@ -34,7 +36,20 @@ class SaveManager:
                 else { "class": "ResourceItem", "x": r.rect.x, "y": r.rect.y, "type": r.resource_type }
                 for r in resources
             ],
-            "enemies": [{"x": e.rect.x, "y": e.rect.y, "hp": e.hp} for e in enemies]
+            "enemies": [{"x": e.rect.x, "y": e.rect.y, "hp": e.hp} for e in enemies],
+            "placed_chests": [
+                {
+                    "x": c.rect.x, "y": c.rect.y, 
+                    "inventory": c.inventory.items
+                } for c in getattr(player, 'game_manager', None).placed_chests if hasattr(player, 'game_manager')
+            ] if hasattr(player, 'game_manager') else [],
+            "crops": [
+                {
+                    "x": c.rect.x, "y": c.rect.y, "type": c.crop_type,
+                    "stage": c.growth_stage, "timer": c.growth_timer,
+                    "is_mature": c.is_mature
+                } for c in getattr(player, 'game_manager', None).crops if hasattr(player, 'game_manager')
+            ] if hasattr(player, 'game_manager') else []
         }
         
         with open(SAVE_FILE, "w") as f:
@@ -86,5 +101,23 @@ class SaveManager:
             enemy = Enemy(e_data["x"], e_data["y"])
             enemy.hp = e_data["hp"]
             enemies.append(enemy)
+
+        # load placed chests
+        gm = getattr(player, 'game_manager', None)
+        if gm:
+            gm.placed_chests = []
+            for c_data in data.get("placed_chests", []):
+                chest = Chest(c_data["x"], c_data["y"])
+                chest.inventory.items = c_data.get("inventory", {})
+                gm.placed_chests.append(chest)
+            
+            gm.crops = []
+            for cr_data in data.get("crops", []):
+                crop = Crop(cr_data["x"], cr_data["y"], cr_data.get("type", "wheat"))
+                crop.growth_stage = cr_data.get("stage", 0)
+                crop.is_mature = cr_data.get("is_mature", False)
+                # Adjust timer to keep progress
+                crop.growth_timer = pygame.time.get_ticks() - (cr_data.get("timer", 0))
+                gm.crops.append(crop)
             
         return True

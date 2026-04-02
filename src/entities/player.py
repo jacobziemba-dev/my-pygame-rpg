@@ -1,17 +1,18 @@
 import pygame
 import os
-from src.inventory import Inventory
-from src.skill_manager import SkillManager
+from src.systems.inventory import Inventory
+from src.systems.skill_manager import SkillManager
+from src.core.settings import *
 
 class Player: 
     def __init__(self, x, y): #* __init__ is the constructor for the Player class
-        self.rect = pygame.Rect(x, y, 32, 32) 
-        self.color = (0, 128, 255)
-        self.speed = 4
+        self.rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE) 
+        self.color = COLOR_PLAYER
+        self.speed = PLAYER_SPEED
         self.inventory = Inventory()
         
-        self.max_hp = 100
-        self.hp = 100
+        self.max_hp = PLAYER_MAX_HP
+        self.hp = PLAYER_MAX_HP
         self.last_hit_time = 0
         
         self.skills = SkillManager()
@@ -26,6 +27,8 @@ class Player:
         # Grant starting tools
         self.inventory.add_item("bronze_axe", 1)
         self.inventory.add_item("bronze_pickaxe", 1)
+        self.inventory.add_item("bronze_hoe", 1)
+        self.inventory.add_item("wheat_seeds", 5)
 
         self.image = None
         sprite_path = os.path.join("assets", "sprites", "player.png")
@@ -56,7 +59,7 @@ class Player:
             self.current_action = None
             self.action_target = None
             
-        self.rect.clamp_ip(pygame.Rect(0, 0, 2400, 2400))
+        self.rect.clamp_ip(pygame.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
 
     def draw(self, surface, camera=None): #* draw function is used to draw the player character on the screen
         # Flash player transparent if they were hit recently

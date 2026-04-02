@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.1] - 🏡 Agriculture & Storage
+- Implemented placeable **Storage Chests**:
+    - Craftable via menu (10 Wood).
+    - Can be placed anywhere on a 32x32 grid with [P].
+    - Persistent inventory storage with [E] to interact and [T] to deposit all.
+- Added a **Grid-based Farming** system:
+    - New **Farming Skill** added to the SkillManager.
+    - Added **Crops** with 4 growth stages (Tilled, Sprout, Growing, Mature).
+    - Use [F] to till, plant seeds, and harvest mature crops.
+    - Added Wheat Seeds and Wheat items.
+- Updated **Save System** to persist all placed chests, their contents, and active crop growth.
+- Updated UI with new interaction hints and chest storage overlay.
+
 ## [v1.0] - Advanced Forging & Menus
 - Implemented multi-step refinement chains (e.g., mining Ore -> smelting Bars -> forging Weapons).
 - Created a dedicated pop-up Crafting Menu UI to replace the simple single-key press, allowing for dozens of dynamic recipes.

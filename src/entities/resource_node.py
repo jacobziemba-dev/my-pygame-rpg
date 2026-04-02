@@ -1,9 +1,10 @@
 import pygame
 import os
+from src.core.settings import *
 
 class ResourceNode:
     def __init__(self, x, y, node_type, difficulty, tool_required, yields, hp, respawn_time):
-        self.rect = pygame.Rect(x, y, 32, 32)
+        self.rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE)
         self.node_type = node_type
         self.difficulty = difficulty
         self.tool_required = tool_required
@@ -19,7 +20,7 @@ class ResourceNode:
         if os.path.exists(sprite_path):
             try:
                 self.image = pygame.image.load(sprite_path).convert_alpha()
-                self.image = pygame.transform.scale(self.image, (32, 32))
+                self.image = pygame.transform.scale(self.image, (TILE_SIZE, TILE_SIZE))
             except pygame.error:
                 pass
                 

@@ -4,6 +4,7 @@ RECIPES = [
     {"name": "iron_sword",   "label": "Iron Sword",   "inputs": {"iron_bar": 2},          "outputs": {"iron_sword": 1},   "min_level": 5, "xp": 25},
     {"name": "iron_axe",     "label": "Iron Axe",     "inputs": {"iron_bar": 2},          "outputs": {"iron_axe": 1},     "min_level": 5, "xp": 20},
     {"name": "iron_pickaxe", "label": "Iron Pickaxe", "inputs": {"iron_bar": 2},          "outputs": {"iron_pickaxe": 1}, "min_level": 5, "xp": 20},
+    {"name": "chest_item",    "label": "Chest",        "inputs": {"wood": 10},             "outputs": {"chest_item": 1},   "min_level": 2, "xp": 10},
 ]
 
 

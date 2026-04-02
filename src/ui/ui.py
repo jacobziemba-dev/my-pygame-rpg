@@ -1,4 +1,5 @@
 import pygame
+from src.systems.inventory import RECIPES
 
 class UIManager:
     def __init__(self, player):
@@ -13,6 +14,7 @@ class UIManager:
         self.show_skills = False
         self.show_crafting = False
         self.crafting_index = 0
+        self.active_chest = None
 
     def show_message(self, text):
         self.message = text
@@ -59,7 +61,7 @@ class UIManager:
         surface.blit(hp_text, (hp_x, hp_y - 20))
 
         # Draw control hints (bottom-right)
-        hints = ["[E] Gather", "[Space] Attack", "[C] Craft", "[K] Skills", "[F5] Save", "[F9] Load"]
+        hints = ["[E] Interact", "[Space] Attack", "[C] Craft", "[P] Place Chest", "[F] Farm", "[K] Skills", "[F5] Save", "[F9] Load"]
         hint_x = surface.get_width() - 110
         hint_y = surface.get_height() - len(hints) * 18 - 10
         for i, hint in enumerate(hints):
@@ -71,6 +73,8 @@ class UIManager:
             self._draw_skills_panel(surface)
         if self.show_crafting:
             self._draw_crafting_menu(surface)
+        if self.active_chest:
+            self._draw_chest_inventory(surface)
 
         # Draw Message
         if self.message:
@@ -79,7 +83,6 @@ class UIManager:
             surface.blit(msg_surf, msg_rect)
 
     def _draw_crafting_menu(self, surface):
-        from src.inventory import RECIPES
         panel_w, panel_h = 400, 300
         panel_x = (surface.get_width() - panel_w) // 2
         panel_y = (surface.get_height() - panel_h) // 2
@@ -145,3 +148,26 @@ class UIManager:
             label = f"{skill.name:<14} Lv.{skill.level:<3} XP: {skill.xp}/{skill.xp_threshold()}"
             text_surf = self.font.render(label, True, (220, 220, 220))
             surface.blit(text_surf, (panel_x + 8, row_y))
+
+    def _draw_chest_inventory(self, surface):
+        panel_w, panel_h = 300, 300
+        panel_x = (surface.get_width() - panel_w) // 2
+        panel_y = (surface.get_height() - panel_h) // 2
+
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel.fill((40, 30, 20, 230))
+        surface.blit(panel, (panel_x, panel_y))
+
+        title = self.font.render("Chest Storage", True, (255, 215, 0))
+        surface.blit(title, (panel_x + 10, panel_y + 10))
+        
+        y_offset = panel_y + 40
+        for item, count in self.active_chest.inventory.items.items():
+            if count == 0: continue
+            label = f"{item.replace('_', ' ').title()}: {count}"
+            item_surf = self.font.render(label, True, (200, 200, 200))
+            surface.blit(item_surf, (panel_x + 20, y_offset))
+            y_offset += 25
+        
+        hint = self.font.render("[ESC] Close   [T] Deposit All", True, (150, 150, 150))
+        surface.blit(hint, (panel_x + 10, panel_y + panel_h - 30))

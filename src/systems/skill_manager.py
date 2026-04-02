@@ -21,11 +21,13 @@ class SkillManager:
     def __init__(self):
         self.woodcutting = Skill("Woodcutting")
         self.mining      = Skill("Mining")
+        self.farming     = Skill("Farming")
         self.melee       = Skill("Melee")
         self.crafting    = Skill("Crafting")
         self._skills = {
             "woodcutting": self.woodcutting,
             "mining":      self.mining,
+            "farming":     self.farming,
             "melee":       self.melee,
             "crafting":    self.crafting,
         }

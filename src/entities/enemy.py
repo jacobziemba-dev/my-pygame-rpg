@@ -1,10 +1,11 @@
 import math
 import pygame
+from src.core.settings import *
 
 class Enemy:
     def __init__(self, x, y):
-        self.rect = pygame.Rect(x, y, 32, 32)
-        self.color = (255, 0, 0)
+        self.rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE)
+        self.color = COLOR_ENEMY
         self.hp = 30
         self.max_hp = 30
         self.speed = 2
