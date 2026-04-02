@@ -21,6 +21,8 @@ class UIManager:
         self.inventory_index = 0
         self.bank_index = 0
         self.active_bank = False
+        self.active_station = None
+        self.station_index = 0
         
         self.item_images = {}
         self._load_item_sprites()
@@ -91,6 +93,8 @@ class UIManager:
             self._draw_crafting_menu(surface)
         if self.active_bank:
             self._draw_bank_inventory(surface)
+        if self.active_station:
+            self._draw_station_menu(surface)
 
         # Draw Message
         if self.message:
@@ -215,6 +219,53 @@ class UIManager:
                             return "drop_item", i
         return None, None
 
+    def _draw_station_menu(self, surface):
+        panel_w, panel_h = 400, 300
+        panel_x = (surface.get_width() - panel_w) // 2
+        panel_y = (surface.get_height() - panel_h) // 2
+
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel.fill((20, 20, 20, 220))
+        surface.blit(panel, (panel_x, panel_y))
+
+        # Header
+        title = self.font.render(f"{self.active_station.name} Menu", True, (255, 215, 0))
+        surface.blit(title, (panel_x + 10, panel_y + 8))
+        controls = self.font.render("[ESC] Close  [↑↓] Select  [Enter] Process", True, (140, 140, 140))
+        surface.blit(controls, (panel_x + 10, panel_y + 28))
+        pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + 48), (panel_x + panel_w, panel_y + 48))
+
+        recipes = [r for r in RECIPES if r.get("station") == self.active_station.station_type]
+
+        # Recipe list
+        list_top = panel_y + 54
+        for i, recipe in enumerate(recipes):
+            row_y = list_top + i * 22
+            if row_y > panel_y + panel_h - 86:
+                break
+            can_items = all(self.player.inventory.items.get(k, 0) >= v for k, v in recipe["inputs"].items())
+
+            if i == self.station_index:
+                pygame.draw.rect(surface, (60, 55, 15), (panel_x + 4, row_y - 2, panel_w - 8, 20))
+
+            name_color = (220, 220, 220) if can_items else (90, 90, 90)
+            status = "✓" if can_items else "✗ items"
+            status_color = (80, 200, 80) if can_items else (200, 80, 80)
+
+            label = f"{'>' if i == self.station_index else ' '} {recipe['label']}"
+            surface.blit(self.font.render(label, True, name_color), (panel_x + 8, row_y))
+            status_surf = self.font.render(status, True, status_color)
+            surface.blit(status_surf, (panel_x + panel_w - status_surf.get_width() - 10, row_y))
+
+        # Detail section
+        pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + panel_h - 76), (panel_x + panel_w, panel_y + panel_h - 76))
+        if 0 <= self.station_index < len(recipes):
+            r = recipes[self.station_index]
+            inputs_str = ",  ".join(f"{v}x {k.replace('_', ' ')}" for k, v in r["inputs"].items())
+            outputs_str = ",  ".join(f"{v}x {k.replace('_', ' ')}" for k, v in r["outputs"].items())
+            surface.blit(self.font.render(f"In:  {inputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 70))
+            surface.blit(self.font.render(f"Out: {outputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 48))
+
     def _draw_crafting_menu(self, surface):
         panel_w, panel_h = 400, 300
         panel_x = (surface.get_width() - panel_w) // 2
@@ -225,7 +276,7 @@ class UIManager:
         surface.blit(panel, (panel_x, panel_y))
 
         # Header
-        title = self.font.render("Crafting Menu", True, (255, 215, 0))
+        title = self.font.render("Hand Crafting", True, (255, 215, 0))
         surface.blit(title, (panel_x + 10, panel_y + 8))
         controls = self.font.render("[ESC] Close  [↑↓] Select  [Enter] Craft", True, (140, 140, 140))
         surface.blit(controls, (panel_x + 10, panel_y + 28))
@@ -233,9 +284,12 @@ class UIManager:
 
         crafting_level = self.player.skills.crafting.level
 
+        # Filter out station recipes
+        recipes = [r for r in RECIPES if not r.get("station")]
+
         # Recipe list
         list_top = panel_y + 54
-        for i, recipe in enumerate(RECIPES):
+        for i, recipe in enumerate(recipes):
             row_y = list_top + i * 22
             if row_y > panel_y + panel_h - 86:
                 break
@@ -256,8 +310,8 @@ class UIManager:
 
         # Detail section
         pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + panel_h - 76), (panel_x + panel_w, panel_y + panel_h - 76))
-        if 0 <= self.crafting_index < len(RECIPES):
-            r = RECIPES[self.crafting_index]
+        if 0 <= self.crafting_index < len(recipes):
+            r = recipes[self.crafting_index]
             inputs_str = ",  ".join(f"{v}x {k.replace('_', ' ')}" for k, v in r["inputs"].items())
             outputs_str = ",  ".join(f"{v}x {k.replace('_', ' ')}" for k, v in r["outputs"].items())
             surface.blit(self.font.render(f"In:  {inputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 70))

@@ -7,13 +7,13 @@ Moving forward, the architecture will be heavily focused on single-player scalab
 ---
 ### v1.4 — ⚒️ Crafting & Resource Processing (Current)
 Focus on stabilizing loop behavior and introducing crafting systems.
-- [ ] Stabilize the core loop so input -> update -> render runs continuously until quit.
-- [ ] Fix timing control with a consistent FPS cap and delta-time handling.
-- [ ] Verify shutdown behavior so the game exits only on explicit quit events.
-- [ ] Add minimal runtime diagnostics (FPS/frame time) for quick validation.
-- [ ] Start v1.4 features: recipe definitions, resource nodes, and processing stations (e.g., furnace, workbench).
-- [ ] Implement a "Processing" state for crafting stations (e.g., smelting ore into bars).
-- [ ] Introduce tool tier requirements for higher-level resource nodes.
+- [x] Stabilize the core loop so input -> update -> render runs continuously until quit.
+- [x] Fix timing control with a consistent FPS cap and delta-time handling.
+- [x] Verify shutdown behavior so the game exits only on explicit quit events.
+- [x] Add minimal runtime diagnostics (FPS/frame time) for quick validation.
+- [x] Start v1.4 features: recipe definitions, resource nodes, and processing stations (e.g., furnace, workbench).
+- [x] Implement a "Processing" state for crafting stations (e.g., smelting ore into bars).
+- [x] Introduce tool tier requirements for higher-level resource nodes.
 
 
 ### v1.3 — 🏦 Centralized Bank System (Done)

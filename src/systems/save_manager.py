@@ -29,7 +29,7 @@ class SaveManager:
                 {
                     "class": "ResourceNode", "x": r.rect.x, "y": r.rect.y, "type": r.node_type,
                     "difficulty": r.difficulty, "tool_required": r.tool_required, "yields": r.yields,
-                    "max_hp": r.max_hp, "hp": r.hp, "respawn_time": r.respawn_time,
+                    "max_hp": r.max_hp, "hp": r.hp, "respawn_time": r.respawn_time, "min_level": getattr(r, 'min_level', 1),
                     "is_active": r.is_active,
                     "remaining_respawn_ms": max(0, r.respawn_time - (pygame.time.get_ticks() - r.dead_timer)) if not r.is_active else 0,
                 } if isinstance(r, ResourceNode) 
@@ -45,6 +45,25 @@ class SaveManager:
                 } for c in getattr(player, 'game_manager', None).crops if hasattr(player, 'game_manager')
             ] if hasattr(player, 'game_manager') else []
         }
+        
+        # Save stations data
+        gm = getattr(player, 'game_manager', None)
+        if gm and hasattr(gm, 'stations'):
+            data["stations"] = [
+                {
+                    "x": s.rect.x,
+                    "y": s.rect.y,
+                    "station_type": s.station_type,
+                    "name": s.name,
+                    "is_processing": s.is_processing,
+                    "process_start_time": pygame.time.get_ticks() - s.process_start_time if s.is_processing else 0,
+                    "process_duration": s.process_duration,
+                    "input_item": s.input_item,
+                    "output_item": s.output_item,
+                    "items_to_process": s.items_to_process,
+                    "processed_items": s.processed_items
+                } for s in gm.stations
+            ]
         
         with open(SAVE_FILE, "w") as f:
             json.dump(data, f)
@@ -77,7 +96,7 @@ class SaveManager:
                 node = ResourceNode(
                     r_data["x"], r_data["y"], r_data["type"], 
                     r_data["difficulty"], r_data["tool_required"], r_data["yields"], 
-                    r_data["max_hp"], r_data["respawn_time"]
+                    r_data["max_hp"], r_data["respawn_time"], r_data.get("min_level", 1)
                 )
                 node.is_active = r_data.get("is_active", True)
                 if not node.is_active:
@@ -108,5 +127,18 @@ class SaveManager:
                 # Adjust timer to keep progress
                 crop.growth_timer = pygame.time.get_ticks() - (cr_data.get("timer", 0))
                 gm.crops.append(crop)
+                
+            if "stations" in data and hasattr(gm, 'stations'):
+                for i, s_data in enumerate(data["stations"]):
+                    if i < len(gm.stations):
+                        s = gm.stations[i]
+                        s.is_processing = s_data.get("is_processing", False)
+                        if s.is_processing:
+                            s.process_start_time = pygame.time.get_ticks() - s_data.get("process_start_time", 0)
+                        s.process_duration = s_data.get("process_duration", 0)
+                        s.input_item = s_data.get("input_item")
+                        s.output_item = s_data.get("output_item")
+                        s.items_to_process = s_data.get("items_to_process", 0)
+                        s.processed_items = s_data.get("processed_items", 0)
             
         return True

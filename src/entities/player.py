@@ -122,6 +122,17 @@ class Player(Entity):
                          # It's an enemy
                          self.current_action = "attacking"
                          self.action_target = self.interaction_target
+                    elif hasattr(self.interaction_target, 'station_type'):
+                         # It's a station
+                         station = self.interaction_target
+                         collected = station.collect(self)
+                         if hasattr(self.game_manager, 'ui'):
+                             if collected > 0:
+                                 self.game_manager.ui.show_message(f"Collected {collected} items!")
+                             else:
+                                 self.game_manager.ui.active_station = station
+                                 self.game_manager.ui.station_index = 0
+                                 self.game_manager.ui.show_message(f"Opened {station.name}.")
                     elif hasattr(self.interaction_target, 'inventory') and hasattr(self.interaction_target, 'rect') and not hasattr(self.interaction_target, 'image'):
                          # It's a chest
                          if hasattr(self.game_manager, 'ui'):

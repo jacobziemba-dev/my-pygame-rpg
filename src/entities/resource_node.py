@@ -3,7 +3,7 @@ import os
 from src.core.settings import *
 
 class ResourceNode:
-    def __init__(self, x, y, node_type, difficulty, tool_required, yields, hp, respawn_time):
+    def __init__(self, x, y, node_type, difficulty, tool_required, yields, hp, respawn_time, min_level=1):
         self.rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE)
         self.node_type = node_type
         self.difficulty = difficulty
@@ -12,6 +12,7 @@ class ResourceNode:
         self.max_hp = hp
         self.hp = hp
         self.respawn_time = respawn_time
+        self.min_level = min_level
         self.dead_timer = 0
         self.is_active = True
         

@@ -4,6 +4,7 @@ from src.entities.player import Player
 from src.entities.resource_item import ResourceItem
 from src.entities.resource_node import ResourceNode
 from src.entities.bank import Bank
+from src.entities.station import Station
 from src.ui.ui import UIManager
 from src.entities.enemy import Enemy
 from src.entities.crop import Crop
@@ -31,6 +32,11 @@ class GameManager:
         self._generate_enemies()
 
         self.bank = Bank(PLAYER_START_X + 100, PLAYER_START_Y - 50)
+        
+        self.stations = []
+        self.stations.append(Station(PLAYER_START_X + 150, PLAYER_START_Y, "furnace", "Furnace"))
+        self.stations.append(Station(PLAYER_START_X + 150, PLAYER_START_Y + 50, "workbench", "Workbench"))
+
         self.crops = []
         
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
@@ -45,17 +51,17 @@ class GameManager:
         for _ in range(NUM_TREES):
             rx = random.randint(50, MAP_WIDTH - 50)
             ry = random.randint(50, MAP_HEIGHT - 50)
-            self.resources.append(ResourceNode(rx, ry, "tree", 20, "axe", "wood", hp=5, respawn_time=15000))
+            self.resources.append(ResourceNode(rx, ry, "tree", 20, "axe", "wood", hp=5, respawn_time=15000, min_level=1))
             
         for _ in range(NUM_ROCKS):
             rx = random.randint(50, MAP_WIDTH - 50)
             ry = random.randint(50, MAP_HEIGHT - 50)
-            self.resources.append(ResourceNode(rx, ry, "rock", 35, "pickaxe", "stone", hp=3, respawn_time=20000))
+            self.resources.append(ResourceNode(rx, ry, "rock", 35, "pickaxe", "stone", hp=3, respawn_time=20000, min_level=1))
 
         for _ in range(NUM_IRON_ROCKS):
             rx = random.randint(50, MAP_WIDTH - 50)
             ry = random.randint(50, MAP_HEIGHT - 50)
-            self.resources.append(ResourceNode(rx, ry, "iron_rock", 50, "pickaxe", "iron_ore", hp=3, respawn_time=30000))
+            self.resources.append(ResourceNode(rx, ry, "iron_rock", 50, "pickaxe", "iron_ore", hp=3, respawn_time=30000, min_level=5))
 
     def _generate_enemies(self):
         for _ in range(NUM_ENEMIES):
@@ -110,6 +116,13 @@ class GameManager:
         if not clicked_entity:
             if click_rect.colliderect(self.bank.rect):
                 clicked_entity = self.bank
+                
+        # Stations
+        if not clicked_entity:
+            for station in self.stations:
+                if click_rect.colliderect(station.rect):
+                    clicked_entity = station
+                    break
                     
         # Crops
         if not clicked_entity:
@@ -158,8 +171,10 @@ class GameManager:
                         self.resources.append(ResourceItem(drop_x, drop_y, item_name))
                         self.ui.show_message(f"Dropped 1 {item_name.replace('_', ' ').title()}")
                 elif action == "craft_item":
-                    if 0 <= index < len(RECIPES):
-                        recipe = RECIPES[index]
+                    # For normal crafting menu
+                    recipes = [r for r in RECIPES if not r.get("station")]
+                    if 0 <= index < len(recipes):
+                        recipe = recipes[index]
                         success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level)
                         if success:
                             self.player.skills.gain_xp("crafting", result)
@@ -167,7 +182,7 @@ class GameManager:
                         else:
                             self.ui.show_message(result)
                 elif action is None and event.type == pygame.MOUSEBUTTONDOWN:
-                     if not (self.ui.show_inventory or self.ui.show_crafting or self.ui.active_bank or self.ui.show_skills):
+                     if not (self.ui.show_inventory or self.ui.show_crafting or self.ui.active_bank or self.ui.show_skills or getattr(self.ui, 'active_station', None)):
                          if event.button == 1: # Left click moves
                              self.handle_world_click(event.pos, event.button)
 
@@ -182,24 +197,29 @@ class GameManager:
                     self._handle_crafting_input(event)
                 elif self.ui.active_bank:
                     self._handle_bank_input(event)
+                elif getattr(self.ui, 'active_station', None):
+                    self._handle_station_input(event)
                 else:
                     self._handle_main_input(event)
 
     def _handle_crafting_input(self, event):
         if event.key == pygame.K_ESCAPE or event.key == pygame.K_c:
             self.ui.show_crafting = False
-        elif event.key == pygame.K_UP:
-            self.ui.crafting_index = max(0, self.ui.crafting_index - 1)
-        elif event.key == pygame.K_DOWN:
-            self.ui.crafting_index = min(len(RECIPES) - 1, self.ui.crafting_index + 1)
-        elif event.key == pygame.K_RETURN:
-            recipe = RECIPES[self.ui.crafting_index]
-            success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level)
-            if success:
-                self.player.skills.gain_xp("crafting", result)
-                self.ui.show_message(f"{recipe['label']} crafted! (+{result} Crafting XP)")
-            else:
-                self.ui.show_message(result)
+        else:
+            recipes = [r for r in RECIPES if not r.get("station")]
+            if event.key == pygame.K_UP:
+                self.ui.crafting_index = max(0, self.ui.crafting_index - 1)
+            elif event.key == pygame.K_DOWN:
+                self.ui.crafting_index = min(len(recipes) - 1, self.ui.crafting_index + 1)
+            elif event.key == pygame.K_RETURN:
+                if 0 <= self.ui.crafting_index < len(recipes):
+                    recipe = recipes[self.ui.crafting_index]
+                    success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level)
+                    if success:
+                        self.player.skills.gain_xp("crafting", result)
+                        self.ui.show_message(f"{recipe['label']} crafted! (+{result} Crafting XP)")
+                    else:
+                        self.ui.show_message(result)
 
     def _handle_inventory_input(self, event):
         active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
@@ -235,6 +255,41 @@ class GameManager:
                     self.player.inventory.items[item] = 0
             self.ui.show_message("Deposited all items into bank.")
 
+    def _handle_station_input(self, event):
+        station = self.ui.active_station
+        if event.key == pygame.K_ESCAPE or event.key == pygame.K_e:
+            self.ui.active_station = None
+        elif event.key == pygame.K_UP:
+            self.ui.station_index = max(0, self.ui.station_index - 1)
+        elif event.key == pygame.K_DOWN:
+            recipes = [r for r in RECIPES if r.get("station") == station.station_type]
+            self.ui.station_index = min(len(recipes) - 1, self.ui.station_index + 1)
+        elif event.key == pygame.K_RETURN:
+            recipes = [r for r in RECIPES if r.get("station") == station.station_type]
+            if 0 <= self.ui.station_index < len(recipes):
+                recipe = recipes[self.ui.station_index]
+                # Start processing if we have items
+                can_craft = True
+                for item, amount in recipe["inputs"].items():
+                    if self.player.inventory.items.get(item, 0) < amount:
+                        self.ui.show_message(f"Need {amount} {item}!")
+                        can_craft = False
+                        break
+                
+                # Check min level
+                if self.player.skills.crafting.level < recipe["min_level"]:
+                    self.ui.show_message(f"Requires Crafting Lv.{recipe['min_level']}.")
+                    can_craft = False
+
+                if can_craft:
+                    for item, amount in recipe["inputs"].items():
+                        self.player.inventory.remove_item(item, amount)
+                    
+                    output_item = list(recipe["outputs"].keys())[0]
+                    duration = recipe.get("duration", 2000)
+                    station.start_processing(list(recipe["inputs"].keys())[0], output_item, 1, duration)
+                    self.ui.show_message(f"Started processing {output_item}...")
+            
     def _handle_main_input(self, event):
         if event.key == pygame.K_e:
             self._interact()
@@ -280,6 +335,18 @@ class GameManager:
             self.ui.active_bank = True
             self.ui.show_message("Opened bank vault.")
             return
+
+        # Check for stations
+        for station in self.stations:
+            if self.player.rect.inflate(10, 10).colliderect(station.rect):
+                collected = station.collect(self.player)
+                if collected > 0:
+                    self.ui.show_message(f"Collected {collected} items!")
+                else:
+                    self.ui.active_station = station
+                    self.ui.station_index = 0
+                    self.ui.show_message(f"Opened {station.name}.")
+                return
 
         # Check for resources/items
         for item in self.resources[:]:
@@ -345,6 +412,9 @@ class GameManager:
             
             for crop in self.crops:
                 crop.update()
+                
+            for station in self.stations:
+                station.update()
             
             # Action Manager Ticks (once per 1000ms)
             current_time = pygame.time.get_ticks()
@@ -406,6 +476,8 @@ class GameManager:
             item.draw(self.screen, self.camera)
         for crop in self.crops:
             crop.draw(self.screen, self.camera)
+        for station in self.stations:
+            station.draw(self.screen, self.camera)
         for enemy in self.enemies:
             enemy.draw(self.screen, self.camera)
         self.bank.draw(self.screen, self.camera)
