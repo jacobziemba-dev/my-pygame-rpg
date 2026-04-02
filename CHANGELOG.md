@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased / v1.3] - 🏦 Centralized Bank System
+- Added a static Bank Booth near the starting location.
+- Created a global Bank inventory attached to the player.
+- Built a comprehensive Bank UI for depositing and withdrawing items.
+- Removed the craftable/placeable chest system to focus on central hub storage.
+
+## [v1.2] - 🖱️ Point-and-Click & Interactions
+- Implemented **Point-and-Click Movement**:
+    - Left-click on the ground to move the player to that location.
+    - Draws a target indicator at the destination.
+- Added **Context-Sensitive Mouse Interactions**:
+    - Left-click on a resource node to walk to it and start gathering automatically.
+    - Left-click on an enemy to walk to it and start attacking automatically.
+    - Left-click on a chest to walk to it and open its inventory.
+    - Left-click on a dropped item to walk to it and pick it up.
+- Added **Item Dropping**:
+    - Right-click an item in the inventory to drop it on the ground near the player.
+
 ## [v1.1] - 🏡 Agriculture & Storage
 - Implemented placeable **Storage Chests**:
     - Craftable via menu (10 Wood).

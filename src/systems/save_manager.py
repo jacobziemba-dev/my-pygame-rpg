@@ -4,7 +4,6 @@ import pygame
 from src.entities.resource_item import ResourceItem
 from src.entities.resource_node import ResourceNode
 from src.entities.enemy import Enemy
-from src.entities.chest import Chest
 from src.entities.crop import Crop
 from src.systems.skill_manager import SkillManager
 
@@ -23,6 +22,7 @@ class SaveManager:
                 "base_defense": getattr(player, 'base_defense', 0),
                 "equipped_items": getattr(player, 'equipped_items', []),
                 "inventory": player.inventory.items,
+                "bank_inventory": player.bank_inventory.items,
                 "skills": player.skills.to_dict()
             },
             "resources": [
@@ -37,12 +37,6 @@ class SaveManager:
                 for r in resources
             ],
             "enemies": [{"x": e.rect.x, "y": e.rect.y, "hp": e.hp} for e in enemies],
-            "placed_chests": [
-                {
-                    "x": c.rect.x, "y": c.rect.y, 
-                    "inventory": c.inventory.items
-                } for c in getattr(player, 'game_manager', None).placed_chests if hasattr(player, 'game_manager')
-            ] if hasattr(player, 'game_manager') else [],
             "crops": [
                 {
                     "x": c.rect.x, "y": c.rect.y, "type": c.crop_type,
@@ -73,6 +67,7 @@ class SaveManager:
         player.base_defense = p_data.get("base_defense", 0)
         player.equipped_items = p_data.get("equipped_items", [])
         player.inventory.items = p_data.get("inventory", {})
+        player.bank_inventory.items = p_data.get("bank_inventory", {})
         player.skills = SkillManager.from_dict(p_data.get("skills", {}))
         
         # load resources
@@ -102,15 +97,9 @@ class SaveManager:
             enemy.hp = e_data["hp"]
             enemies.append(enemy)
 
-        # load placed chests
+        # load crops
         gm = getattr(player, 'game_manager', None)
         if gm:
-            gm.placed_chests = []
-            for c_data in data.get("placed_chests", []):
-                chest = Chest(c_data["x"], c_data["y"])
-                chest.inventory.items = c_data.get("inventory", {})
-                gm.placed_chests.append(chest)
-            
             gm.crops = []
             for cr_data in data.get("crops", []):
                 crop = Crop(cr_data["x"], cr_data["y"], cr_data.get("type", "wheat"))

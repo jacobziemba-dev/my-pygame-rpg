@@ -46,6 +46,12 @@ class ActionManager:
         if roll <= success_chance:
             node.take_hit()
             player.inventory.add_item(node.yields, 1)
+            
+            # Chance for seeds if woodcutting
+            if node.node_type == "tree" and random.uniform(0, 100) < 15: # 15% chance
+                player.inventory.add_item("wheat_seeds", 1)
+                self.ui.show_message("Found some wheat seeds!")
+
             leveled_up = player.skills.gain_xp(skill_name, 5)
             self.ui.show_message(f"Gained 1 {node.yields}! (+5 {skill_name.capitalize()} XP)")
             if leveled_up:
