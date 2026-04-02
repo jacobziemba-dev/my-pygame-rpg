@@ -21,15 +21,3 @@ class Player:
 
 
 
-
-
-
-
-#NOTES: ========================================================================================================================== 
-# when creating a new Python file, you should name it with a descriptive, short, and lowercase name, using underscores if needed.
-# for example:
-#   player.py            # for a file containing the Player class
-#   main.py              # for the main entry point (like this one)
-#   game_logic.py        # for game logic code
-# avoid spaces and special characters. Always end the filename with '.py'.   
-#NOTES: ========================================================================================================================== 
