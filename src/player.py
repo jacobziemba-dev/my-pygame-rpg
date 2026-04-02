@@ -19,6 +19,14 @@ class Player:
         self.base_defense = 0
         self.equipped_items = []
         
+        self.current_action = None
+        self.action_target = None
+        self.action_timer = 0
+        
+        # Grant starting tools
+        self.inventory.add_item("bronze_axe", 1)
+        self.inventory.add_item("bronze_pickaxe", 1)
+
         self.image = None
         sprite_path = os.path.join("assets", "sprites", "player.png")
         if os.path.exists(sprite_path):
@@ -30,14 +38,23 @@ class Player:
 
     def update(self):
         keys = pygame.key.get_pressed()
+        moved = False
         if keys[pygame.K_w] or keys[pygame.K_UP]:
             self.rect.y -= self.speed
+            moved = True
         if keys[pygame.K_s] or keys[pygame.K_DOWN]:
             self.rect.y += self.speed
+            moved = True
         if keys[pygame.K_a] or keys[pygame.K_LEFT]:
             self.rect.x -= self.speed
+            moved = True
         if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
             self.rect.x += self.speed
+            moved = True
+            
+        if moved and self.current_action is not None:
+            self.current_action = None
+            self.action_target = None
             
         self.rect.clamp_ip(pygame.Rect(0, 0, 2400, 2400))
 

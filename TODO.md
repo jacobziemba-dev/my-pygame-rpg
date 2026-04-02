@@ -179,9 +179,9 @@ Moving forward, the architecture will be heavily focused on single-player scalab
 
 ### v0.8 — 🌳 Persistent Nodes & Tools
 
-- [ ] Refactor `ResourceItem` system into persistent `ResourceNodes` (Trees, Rocks) that take multiple hits to deplete and then respawn over time.
-- [ ] Introduce dedicated gathering tools (Axes for trees, Pickaxes for ore) required to harvest specific nodes.
-- [ ] Overhaul inventory to distinguish between raw materials (Logs, Iron Ore), tools, and finished goods.
+- [x] Refactor `ResourceItem` system into persistent `ResourceNodes` (Trees, Rocks) that take multiple hits to deplete and then respawn over time.
+- [x] Introduce dedicated gathering tools (Axes for trees, Pickaxes for ore) required to harvest specific nodes.
+- [x] Overhaul inventory to distinguish between raw materials (Logs, Iron Ore), tools, and finished goods.
 
 ---
 
@@ -208,11 +208,11 @@ Moving forward, the architecture will be heavily focused on single-player scalab
 
 ## 📋 Tasks
 
-Next steps for **v0.8 — 🌳 Persistent Nodes & Tools**:
+Next steps for **v0.9 — 🏹 Modular Skill System**:
 
-- [ ] Abstract a `ResourceNode` class from the base `ResourceItem` logic.
-- [ ] Update collection mechanic: instead of instantly dropping resources, `Nodes` require repeated striking over time before depleting.
-- [ ] Seed a structured dictionary for `Tools` that dictate what nodes a player is allowed to strike.
+- [ ] Create a `SkillManager` class with separate XP pools for `Woodcutting`, `Mining`, `Melee`, and `Crafting`.
+- [ ] Route XP gains from `ActionManager` and combat into their specific skill pools.
+- [ ] Update `UIManager` to render a Skills overlay panel showing level and XP per skill.
 
 - 🖥️ Screen size: **800x600** (may change)
 - 🐍 Python 3.x + Pygame required

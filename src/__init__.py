@@ -8,6 +8,8 @@ from .game_manager import GameManager
 from .enemy import Enemy
 from .camera import Camera
 from .save_manager import SaveManager
+from .resource_node import ResourceNode
+from .action_manager import ActionManager
 
 
 

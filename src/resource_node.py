@@ -1,0 +1,53 @@
+import pygame
+import os
+
+class ResourceNode:
+    def __init__(self, x, y, node_type, difficulty, tool_required, yields, hp, respawn_time):
+        self.rect = pygame.Rect(x, y, 32, 32)
+        self.node_type = node_type
+        self.difficulty = difficulty
+        self.tool_required = tool_required
+        self.yields = yields
+        self.max_hp = hp
+        self.hp = hp
+        self.respawn_time = respawn_time
+        self.dead_timer = 0
+        self.is_active = True
+        
+        self.image = None
+        sprite_path = os.path.join("assets", "sprites", f"{self.node_type}.png")
+        if os.path.exists(sprite_path):
+            try:
+                self.image = pygame.image.load(sprite_path).convert_alpha()
+                self.image = pygame.transform.scale(self.image, (32, 32))
+            except pygame.error:
+                pass
+                
+        self.active_color = (0, 200, 0) if node_type == "tree" else (150, 150, 150)
+        self.dead_color = (100, 100, 100)
+
+    def update(self):
+        if not self.is_active:
+            current_time = pygame.time.get_ticks()
+            if current_time - self.dead_timer >= self.respawn_time:
+                self.respawn()
+
+    def take_hit(self):
+        self.hp -= 1
+        if self.hp <= 0:
+            self.is_active = False
+            self.dead_timer = pygame.time.get_ticks()
+
+    def respawn(self):
+        self.is_active = True
+        self.hp = self.max_hp
+
+    def draw(self, surface, camera=None):
+        draw_rect = camera.apply(self.rect) if camera else self.rect
+        if self.is_active:
+            if self.image:
+                surface.blit(self.image, draw_rect)
+            else:
+                pygame.draw.rect(surface, self.active_color, draw_rect)
+        else:
+            pygame.draw.rect(surface, self.dead_color, draw_rect)

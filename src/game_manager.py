@@ -2,10 +2,12 @@ import pygame
 import random
 from src.player import Player
 from src.resource_item import ResourceItem
+from src.resource_node import ResourceNode
 from src.ui import UIManager
 from src.enemy import Enemy
 from src.camera import Camera
 from src.save_manager import SaveManager
+from src.action_manager import ActionManager
 
 class GameManager:
     def __init__(self):
@@ -26,6 +28,8 @@ class GameManager:
         
         self.camera = Camera(800, 600, 2400, 2400)
         self.ui = UIManager(self.player)
+        self.action_manager = ActionManager(self.ui)
+        self.last_tick = pygame.time.get_ticks()
         
         self.running = True
 
@@ -33,12 +37,12 @@ class GameManager:
         for _ in range(15):
             rx = random.randint(50, 2350)
             ry = random.randint(50, 2350)
-            self.resources.append(ResourceItem(rx, ry, "wood"))
+            self.resources.append(ResourceNode(rx, ry, "tree", 20, "axe", "wood", hp=5, respawn_time=15000))
             
         for _ in range(10):
             rx = random.randint(50, 2350)
             ry = random.randint(50, 2350)
-            self.resources.append(ResourceItem(rx, ry, "stone"))
+            self.resources.append(ResourceNode(rx, ry, "rock", 35, "pickaxe", "stone", hp=3, respawn_time=20000))
             
         for _ in range(5):
             rx = random.randint(50, 2350)
@@ -66,17 +70,19 @@ class GameManager:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_e:
-                    # Collect resource
+                    # Collect resource or start action
                     for item in self.resources[:]:
                         if self.player.rect.colliderect(item.rect):
-                            self.resources.remove(item)
-                            if item.resource_type == "chest":
+                            if isinstance(item, ResourceItem) and item.resource_type == "chest":
+                                self.resources.remove(item)
                                 self.player.inventory.add_item("wood", 10)
                                 self.player.inventory.add_item("stone", 10)
                                 self.ui.show_message("Opened Chest! Huge Loot gained.")
-                            else:
-                                self.player.inventory.add_item(item.resource_type, 1)
-                                self.ui.show_message(f"Collected {item.resource_type}!")
+                            elif isinstance(item, ResourceNode) and item.is_active:
+                                self.player.current_action = "gathering"
+                                self.player.action_target = item
+                                self.ui.show_message(f"Started gathering {item.node_type}...")
+                            break
                 elif event.key == pygame.K_F5:
                     SaveManager.save_game(self.player, self.resources, self.enemies)
                     self.ui.show_message("Game Saved Successfully!")
@@ -116,6 +122,18 @@ class GameManager:
     def update(self):
         if self.player.hp > 0:
             self.player.update()
+            
+            # Action Manager Ticks (once per 1000ms)
+            current_time = pygame.time.get_ticks()
+            if current_time - self.last_tick >= 1000:
+                self.last_tick = current_time
+                if self.player.current_action == "gathering" and self.player.action_target:
+                    self.action_manager.process_gathering_tick(self.player, self.player.action_target)
+            
+            # Nodes updates (respawn ticks)
+            for item in self.resources:
+                if isinstance(item, ResourceNode):
+                    item.update()
             
             for enemy in self.enemies:
                 enemy.update(self.player)
