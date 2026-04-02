@@ -13,7 +13,7 @@ class ActionManager:
             return
 
         skill_name = ("woodcutting" if node.node_type == "tree"
-                      else "foraging" if node.node_type == "bush"
+                      else "hunter" if node.node_type == "bush"
                       else "mining")
         skill_level = getattr(player.skills, skill_name).level
         

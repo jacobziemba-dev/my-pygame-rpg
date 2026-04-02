@@ -24,6 +24,7 @@ class UIManager:
         self.active_bank = False
         self.active_station = None
         self.station_index = 0
+        self.skills_scroll_y = 0
         
         self.item_images = {}
         self._load_item_sprites()
@@ -51,6 +52,20 @@ class UIManager:
         self.message = text
         self.message_timer = pygame.time.get_ticks()
 
+    def reset_skills_scroll(self):
+        self.skills_scroll_y = 0
+
+    def scroll_skills(self, wheel_y):
+        """Mouse wheel: positive y scrolls content up."""
+        self.skills_scroll_y = max(0, self.skills_scroll_y - wheel_y * 24)
+
+    def _skills_panel_content_height(self):
+        h = 0
+        for _, _, skills in self.player.skills.skills_by_category():
+            h += 22
+            h += len(skills) * 20
+        return h
+
     def update(self):
         if self.message and pygame.time.get_ticks() - self.message_timer > self.message_duration:
             self.message = ""
@@ -63,10 +78,14 @@ class UIManager:
         hp_x = 20
         fill = (self.player.hp / self.player.max_hp) * hp_bar_width
         
-        # Draw Player Stats
-        melee = self.player.skills.melee
-        stats_text = (f"Melee Lv.{melee.level} (XP: {melee.xp}/{melee.xp_threshold()}) "
-                      f"| ATK: {self.player.get_attack()} | DEF: {self.player.get_defense()}")
+        # Draw Player Stats (combat skills + equipment)
+        atk_s = self.player.skills.attack
+        str_s = self.player.skills.strength
+        con_s = self.player.skills.constitution
+        stats_text = (
+            f"ATK {atk_s.level} | STR {str_s.level} | CON {con_s.level} "
+            f"| Hit: {self.player.get_attack()} | DEF: {self.player.get_defense()}"
+        )
         stats_surf = self.font.render(stats_text, True, (255, 215, 0)) # Gold Text
         surface.blit(stats_surf, (hp_x, hp_y - 45))
         
@@ -320,22 +339,48 @@ class UIManager:
             surface.blit(self.font.render(f"XP:  +{r['xp']} Crafting", True, (160, 210, 160)), (panel_x + 10, panel_y + panel_h - 26))
 
     def _draw_skills_panel(self, surface):
-        panel_w, panel_h = 240, 160
+        panel_w = 320
+        panel_h = min(440, surface.get_height() - 20)
         panel_x = surface.get_width() - panel_w - 10
         panel_y = 10
 
         panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel.fill((0, 0, 0, 180))
+        panel.fill((0, 0, 0, 200))
         surface.blit(panel, (panel_x, panel_y))
+        pygame.draw.rect(surface, (80, 70, 40), (panel_x, panel_y, panel_w, panel_h), 2)
 
         title = self.font.render("Skills", True, (255, 215, 0))
         surface.blit(title, (panel_x + 8, panel_y + 6))
+        hint = self.small_font.render("[Wheel] Scroll  [ESC] Close", True, (140, 140, 140))
+        surface.blit(hint, (panel_x + panel_w - hint.get_width() - 8, panel_y + 10))
 
-        for i, skill in enumerate(self.player.skills.all_skills()):
-            row_y = panel_y + 28 + i * 26
-            label = f"{skill.name:<14} Lv.{skill.level:<3} XP: {skill.xp}/{skill.xp_threshold()}"
-            text_surf = self.font.render(label, True, (220, 220, 220))
-            surface.blit(text_surf, (panel_x + 8, row_y))
+        content_top = panel_y + 36
+        clip_h = panel_h - 44
+        total_h = self._skills_panel_content_height()
+        max_scroll = max(0, total_h - clip_h)
+        self.skills_scroll_y = min(self.skills_scroll_y, max_scroll)
+
+        y = content_top - self.skills_scroll_y
+        for _, cat_label, skills in self.player.skills.skills_by_category():
+            if y + 22 > content_top - 500 and y < content_top + clip_h + 500:
+                cat_surf = self.small_font.render(cat_label, True, (200, 180, 100))
+                surface.blit(cat_surf, (panel_x + 8, y))
+            y += 22
+            for skill in skills:
+                label = f"  {skill.name}  Lv.{skill.level}  {skill.xp}/{skill.xp_threshold()} XP"
+                if y + 20 > content_top and y < content_top + clip_h:
+                    text_surf = self.small_font.render(label, True, (220, 220, 220))
+                    surface.blit(text_surf, (panel_x + 10, y))
+                y += 20
+
+        if max_scroll > 0:
+            sb_x = panel_x + panel_w - 8
+            track_top = content_top
+            track_h = clip_h
+            pygame.draw.line(surface, (60, 60, 60), (sb_x, track_top), (sb_x, track_top + track_h), 2)
+            thumb_h = max(20, int(track_h * (clip_h / total_h)))
+            thumb_y = track_top + int((track_h - thumb_h) * (self.skills_scroll_y / max_scroll)) if max_scroll else track_top
+            pygame.draw.rect(surface, (120, 120, 120), (sb_x - 3, thumb_y, 6, thumb_h))
 
     def _draw_bank_inventory(self, surface):
         panel_w, panel_h = 600, 450

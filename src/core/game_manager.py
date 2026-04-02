@@ -148,6 +148,9 @@ class GameManager:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            elif event.type == pygame.MOUSEWHEEL:
+                if self.ui.show_skills:
+                    self.ui.scroll_skills(event.y)
             elif event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN):
                 action, index = self.ui.handle_mouse_event(event)
                 if action == "use_item":
@@ -205,6 +208,10 @@ class GameManager:
                     continue
                 if self.game_over:
                     if event.key == pygame.K_r: self._restart()
+                    continue
+
+                if self.ui.show_skills and event.key == pygame.K_ESCAPE:
+                    self.ui.show_skills = False
                     continue
                 
                 if self.ui.show_inventory:
@@ -320,7 +327,8 @@ class GameManager:
             self.ui.crafting_index = 0
         elif event.key == pygame.K_k:
             self.ui.show_skills = not self.ui.show_skills
-            if self.ui.show_skills: 
+            if self.ui.show_skills:
+                self.ui.reset_skills_scroll()
                 self.ui.show_crafting = False
                 self.ui.show_inventory = False
         elif event.key == pygame.K_i:
@@ -401,6 +409,26 @@ class GameManager:
         else:
             self.ui.show_message("Need a hoe.")
 
+    def _on_enemy_defeated_xp(self):
+        """+5 Attack, +5 Strength, +5 Constitution per kill (issue #19)."""
+        notes = []
+        for sid in ("attack", "strength", "constitution"):
+            if not self.player.skills.gain_xp(sid, 5):
+                continue
+            if sid == "attack":
+                notes.append("Attack level up!")
+            elif sid == "strength":
+                self.player.base_attack += 2
+                notes.append("Strength level up! +2 ATK")
+            elif sid == "constitution":
+                self.player.max_hp += 10
+                self.player.hp = min(self.player.hp + 10, self.player.max_hp)
+                notes.append("Constitution level up! +10 HP")
+        if notes:
+            self.ui.show_message("Enemy defeated! " + " ".join(notes))
+        else:
+            self.ui.show_message("Enemy defeated!")
+
     def _attack(self):
         if self.player.hp <= 0: return
         attack_rect = self.player.rect.inflate(40, 40)
@@ -412,13 +440,7 @@ class GameManager:
                 if enemy.hp <= 0:
                     self.enemies.remove(enemy)
                     self.resources.append(ResourceItem(enemy.rect.x, enemy.rect.y, "wood"))
-                    if self.player.skills.gain_xp("melee", 15):
-                        self.player.max_hp += 10
-                        self.player.hp = min(self.player.hp + 10, self.player.max_hp)
-                        self.player.base_attack += 2
-                        self.ui.show_message("Melee level up! +HP, +ATK")
-                    else:
-                        self.ui.show_message("Enemy defeated!")
+                    self._on_enemy_defeated_xp()
                 return
 
     def update(self, dt):
@@ -453,13 +475,7 @@ class GameManager:
                                if enemy.hp <= 0:
                                     self.enemies.remove(enemy)
                                     self.resources.append(ResourceItem(enemy.rect.x, enemy.rect.y, "wood"))
-                                    if self.player.skills.gain_xp("melee", 15):
-                                        self.player.max_hp += 10
-                                        self.player.hp = min(self.player.hp + 10, self.player.max_hp)
-                                        self.player.base_attack += 2
-                                        self.ui.show_message("Melee level up! +HP, +ATK")
-                                    else:
-                                        self.ui.show_message("Enemy defeated!")
+                                    self._on_enemy_defeated_xp()
                                     self.player.current_action = None
                                     self.player.action_target = None
                           else:
