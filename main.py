@@ -1,13 +1,3 @@
-
-#TODO: - player class 
-    #TODO: - Add a way to move the player character
-    #TODO: - Add a way to jump the player character
-
-#TODO: - Add a way to win the game
-#TODO: - Add a way to lose the game
-#TODO: - Add a way to restart the game
-#TODO: - Add a way to quit the game
-
 import pygame 
 from src import Player # import the Player class 
 

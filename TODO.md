@@ -1,0 +1,203 @@
+# My Pygame RPG
+
+---
+
+## 📝 Overview
+
+A 2D RPG built with **Python** and **Pygame**.
+
+The player explores a world, collects resources, crafts items, fights enemies, and levels up.
+
+### 🎮 Controls
+
+| Key | Action |
+| --- | --- |
+| **WASD** / **Arrow keys** | Move |
+| **E** | Collect resource |
+| **C** | Craft item |
+| **Q** | Drop item |
+| **Space** | Attack |
+| **S** | Save game |
+| **L** | Load game |
+
+### 🚀 How to Run
+
+```bash
+pip install pygame
+python main.py
+```
+
+---
+
+> **Currently working on:** v0.1.5 — 🕹️ Player Movement
+
+---
+
+## ⏳ Core Milestones
+
+These milestones make up the MVP — a playable RPG with movement, combat, and progression.
+
+---
+
+### v0.1 — 🏗️ Project Setup ✅
+
+- [x] Pygame window, game loop, and quit handling
+- [x] `Player` class with rectangle rendering
+- [x] `src/` folder structure and module imports
+
+---
+
+### v0.1.5 — 🕹️ Player Movement
+
+- [ ] Add `speed` to the `Player` class
+- [ ] Add `update()` to read keyboard input and move the player
+- [ ] Call `player.update()` in the main loop before drawing
+- [ ] Clamp position so the player cannot move off screen
+- [ ] 📸 Screenshot: player moving around the screen
+
+---
+
+### v0.2 — ⛏️ Resources & Crafting
+
+**🌱 Resources:**
+
+- [ ] Wood and stone spawn at random positions at game start
+- [ ] Press **E** to collect a resource when the player overlaps it
+- [ ] Remove the resource from the world after collecting
+
+**🎒 Inventory:**
+
+- [ ] Store collected items as a dictionary — example: `{ "wood": 2, "stone": 1 }`
+- [ ] Show inventory updates in the console
+
+**⚒️ Crafting:**
+
+- [ ] Press **C** to craft a sword (requires wood + stone)
+- [ ] Show a success message if crafting works
+- [ ] Show a helpful error if resources are missing
+
+**📁 Code:**
+
+- [ ] Add `ResourceItem` and `Inventory` classes in `src/`
+- [ ] 📸 Screenshot: resources on the map, console showing inventory and crafting
+
+---
+
+### v0.3 — 🗂️ Code Structure
+
+- [ ] Create `src/inventory.py` and `src/resource_item.py`
+- [ ] Create a `GameManager` class for game state and the main loop
+- [ ] Keep all classes in separate files under `src/`
+- [ ] 📸 Screenshot: folder structure showing all modules
+
+---
+
+### v0.4 — 🖼️ Sprites & UI
+
+**🎨 Sprites:**
+
+- [ ] Load sprites from `assets/sprites/` using `pygame.image.load`
+- [ ] Fall back to a colored rectangle if a sprite file is missing
+- [ ] Name sprite files clearly — example: `player.png`, `wood.png`
+- [ ] Make sure sprite bounds match collision rectangles
+
+**🖥️ UI:**
+
+- [ ] Create a `UIManager` class in `src/ui.py`
+- [ ] Show inventory on screen with item icons and counts
+- [ ] Show event notifications — example: "Collected wood", "Sword crafted"
+- [ ] Flash or highlight the player when collecting or crafting
+
+- [ ] 📸 Screenshot: sprites and inventory UI visible in game
+
+---
+
+### v0.5 — ⚔️ Combat & Enemies
+
+**👾 Enemies:**
+
+- [ ] Create an `Enemy` class in `src/enemy.py`
+- [ ] Enemies spawn at set positions on the map
+- [ ] Add basic AI — chase the player when in range, idle otherwise
+- [ ] Enemies have HP and can take damage
+
+**❤️ Health:**
+
+- [ ] Player has HP — shown as a health bar on screen
+- [ ] Enemies deal damage on contact with the player
+- [ ] Player respawns or game ends at 0 HP
+
+**⚔️ Combat:**
+
+- [ ] Press **Space** to attack nearby enemies
+- [ ] Hitting an enemy reduces their HP
+- [ ] Defeated enemies drop loot or XP
+
+- [ ] 📸 Screenshot: enemy on screen, health bars visible, combat happening
+
+---
+
+### v0.6 — 📈 Player Progression
+
+**📊 Stats:**
+
+- [ ] Player has base stats: HP, attack, defense
+- [ ] Stats are shown in the UI
+
+**⭐ XP & Leveling:**
+
+- [ ] Defeating enemies awards XP
+- [ ] Reaching an XP threshold increases the player's level
+- [ ] Leveling up improves stats — example: +10 max HP, +1 attack
+
+**🗡️ Equipment:**
+
+- [ ] Crafted items like the sword can be equipped
+- [ ] Equipped items boost player stats
+
+- [ ] 📸 Screenshot: level and stats shown in UI, equipment visible
+
+---
+
+### v0.7 — 🗺️ World & Map
+
+- [ ] Add a scrolling camera for a world larger than the screen
+- [ ] Build a simple tile-based map
+- [ ] Add interactive objects — doors, chests, switches
+- [ ] Add a basic save system: press **S** to save, **L** to load
+- [ ] 📸 Screenshot: scrolling world with interactive objects
+
+---
+
+## 🔮 Post-MVP
+
+Features to add after the core game is complete.
+
+- [ ] 🔊 Sound effects and background music
+- [ ] ✨ Visual effects for hits, pickups, and level-ups
+- [ ] 💾 Multiple save slots and autosave
+- [ ] 📜 Basic NPC dialogue
+- [ ] 🌍 Expanded map with distinct regions
+- [ ] 🔧 More crafting recipes and resource types
+- [ ] 🎬 Player sprite animation (walk cycle, attack)
+- [ ] ⚙️ In-game settings — volume, fullscreen, controls
+
+---
+
+## 📋 Tasks
+
+Next steps for **v0.1.5 — 🕹️ Player Movement**:
+
+- [ ] ⚡ Add `self.speed = 4` to `Player.__init__` in [src/player.py](src/player.py)
+- [ ] ⌨️ Add `Player.update()` that calls `pygame.key.get_pressed()` and updates `self.rect`
+- [ ] 🔁 Call `player.update()` in [main.py](main.py) before `player.draw()`
+- [ ] 🛑 Clamp `self.rect` so the player stays inside the screen bounds
+
+---
+
+## 📝 Notes
+
+- 🖥️ Screen size: **800x600** (may change)
+- 🐍 Python 3.x + Pygame required
+- 📁 All game classes live in `src/`
+- 🎮 Sprites go in `assets/sprites/` (32x32 PNG)
