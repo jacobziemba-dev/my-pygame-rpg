@@ -1,8 +1,8 @@
 import pygame
 
 class UIManager:
-    def __init__(self, inventory):
-        self.inventory = inventory
+    def __init__(self, player):
+        self.player = player
         pygame.font.init() # Ensure font module is initialized
         self.font = pygame.font.SysFont(None, 24)
         self.large_font = pygame.font.SysFont(None, 32)
@@ -26,10 +26,29 @@ class UIManager:
         surface.blit(title_surf, (10, y_offset))
         y_offset += 25
         
-        for item, count in self.inventory.items.items():
+        for item, count in self.player.inventory.items.items():
             item_surf = self.font.render(f"{item.capitalize()}: {count}", True, (200, 200, 200))
             surface.blit(item_surf, (10, y_offset))
             y_offset += 25
+
+        # Draw Player HP Bar
+        hp_bar_width = 200
+        hp_bar_height = 20
+        hp_y = surface.get_height() - hp_bar_height - 20
+        hp_x = 20
+        fill = (self.player.hp / self.player.max_hp) * hp_bar_width
+        
+        # Draw Player Stats
+        stats_text = f"Level {self.player.level} (XP: {self.player.xp}/{self.player.level * 50}) | ATK: {self.player.get_attack()} | DEF: {self.player.get_defense()}"
+        stats_surf = self.font.render(stats_text, True, (255, 215, 0)) # Gold Text
+        surface.blit(stats_surf, (hp_x, hp_y - 45))
+        
+        pygame.draw.rect(surface, (255, 0, 0), (hp_x, hp_y, hp_bar_width, hp_bar_height))
+        if fill > 0:
+            pygame.draw.rect(surface, (0, 255, 0), (hp_x, hp_y, fill, hp_bar_height))
+            
+        hp_text = self.font.render(f"HP: {self.player.hp}/{self.player.max_hp}", True, (255, 255, 255))
+        surface.blit(hp_text, (hp_x, hp_y - 20))
 
         # Draw Message
         if self.message:

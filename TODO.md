@@ -29,7 +29,7 @@ python main.py
 
 ---
 
-> **Currently working on:** v0.4 — 🖼️ Sprites & UI
+> **Currently working on:** v0.6 — 📈 Player Progression
 
 ---
 
@@ -96,19 +96,19 @@ These milestones make up the MVP — a playable RPG with movement, combat, and p
 
 **🎨 Sprites:**
 
-- [ ] Load sprites from `assets/sprites/` using `pygame.image.load`
-- [ ] Fall back to a colored rectangle if a sprite file is missing
-- [ ] Name sprite files clearly — example: `player.png`, `wood.png`
-- [ ] Make sure sprite bounds match collision rectangles
+- [x] Load sprites from `assets/sprites/` using `pygame.image.load`
+- [x] Fall back to a colored rectangle if a sprite file is missing
+- [x] Name sprite files clearly — example: `player.png`, `wood.png`
+- [x] Make sure sprite bounds match collision rectangles
 
 **🖥️ UI:**
 
-- [ ] Create a `UIManager` class in `src/ui.py`
-- [ ] Show inventory on screen with item icons and counts
-- [ ] Show event notifications — example: "Collected wood", "Sword crafted"
-- [ ] Flash or highlight the player when collecting or crafting
+- [x] Create a `UIManager` class in `src/ui.py`
+- [x] Show inventory on screen with item icons and counts
+- [x] Show event notifications — example: "Collected wood", "Sword crafted"
+- [x] Flash or highlight the player when collecting or crafting
 
-- [ ] 📸 Screenshot: sprites and inventory UI visible in game
+- [x] 📸 Screenshot: sprites and inventory UI visible in game
 
 ---
 
@@ -116,24 +116,24 @@ These milestones make up the MVP — a playable RPG with movement, combat, and p
 
 **👾 Enemies:**
 
-- [ ] Create an `Enemy` class in `src/enemy.py`
-- [ ] Enemies spawn at set positions on the map
-- [ ] Add basic AI — chase the player when in range, idle otherwise
-- [ ] Enemies have HP and can take damage
+- [x] Create an `Enemy` class in `src/enemy.py`
+- [x] Enemies spawn at set positions on the map
+- [x] Add basic AI — chase the player when in range, idle otherwise
+- [x] Enemies have HP and can take damage
 
 **❤️ Health:**
 
-- [ ] Player has HP — shown as a health bar on screen
-- [ ] Enemies deal damage on contact with the player
-- [ ] Player respawns or game ends at 0 HP
+- [x] Player has HP — shown as a health bar on screen
+- [x] Enemies deal damage on contact with the player
+- [x] Player respawns or game ends at 0 HP
 
 **⚔️ Combat:**
 
-- [ ] Press **Space** to attack nearby enemies
-- [ ] Hitting an enemy reduces their HP
-- [ ] Defeated enemies drop loot or XP
+- [x] Press **Space** to attack nearby enemies
+- [x] Hitting an enemy reduces their HP
+- [x] Defeated enemies drop loot or XP
 
-- [ ] 📸 Screenshot: enemy on screen, health bars visible, combat happening
+- [x] 📸 Screenshot: enemy on screen, health bars visible, combat happening
 
 ---
 
@@ -186,12 +186,13 @@ Features to add after the core game is complete.
 
 ## 📋 Tasks
 
-Next steps for **v0.4 — 🖼️ Sprites & UI**:
+Next steps for **v0.6 — 📈 Player Progression**:
 
-- [ ] Create `assets/sprites/` folder and generate placeholder sprites using AI for player, wood, stone, and sword.
-- [ ] Update `Player` and `ResourceItem` classes to load and display sprites, falling back to rectangles if not found.
-- [ ] Create `UIManager` in `src/ui.py` to draw player inventory onto the screen.
-- [ ] Update `UIManager` to briefly show event notifications ("Collected wood") onscreen.
+- [ ] Add `xp`, `level`, `attack`, and `defense` stats to `Player`.
+- [ ] Add `Enemy` logic to grant XP upon death.
+- [ ] Implement `level_up` method checking XP thresholds to increase `Player` max default stats.
+- [ ] Update `UIManager` to render Player Level and XP.
+- [ ] Implement an equipment system enabling our crafted sword to buff player `attack`.
 
 ---
 
