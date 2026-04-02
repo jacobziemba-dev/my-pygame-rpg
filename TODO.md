@@ -29,7 +29,7 @@ python main.py
 
 ---
 
-> **Currently working on:** v0.3 — 🗂️ Code Structure
+> **Currently working on:** v0.4 — 🖼️ Sprites & UI
 
 ---
 
@@ -85,10 +85,10 @@ These milestones make up the MVP — a playable RPG with movement, combat, and p
 
 ### v0.3 — 🗂️ Code Structure
 
-- [ ] Create `src/inventory.py` and `src/resource_item.py`
-- [ ] Create a `GameManager` class for game state and the main loop
-- [ ] Keep all classes in separate files under `src/`
-- [ ] 📸 Screenshot: folder structure showing all modules
+- [x] Create `src/inventory.py` and `src/resource_item.py`
+- [x] Create a `GameManager` class for game state and the main loop
+- [x] Keep all classes in separate files under `src/`
+- [x] 📸 Screenshot: folder structure showing all modules
 
 ---
 
@@ -186,11 +186,12 @@ Features to add after the core game is complete.
 
 ## 📋 Tasks
 
-Next steps for **v0.3 — 🗂️ Code Structure**:
+Next steps for **v0.4 — 🖼️ Sprites & UI**:
 
-- [ ] Create `src/game_manager.py` with a `GameManager` class.
-- [ ] Move the main game loop, event handling, and rendering into `GameManager.run()`.
-- [ ] Keep `main.py` clean — it should just initialize and start the `GameManager`.
+- [ ] Create `assets/sprites/` folder and generate placeholder sprites using AI for player, wood, stone, and sword.
+- [ ] Update `Player` and `ResourceItem` classes to load and display sprites, falling back to rectangles if not found.
+- [ ] Create `UIManager` in `src/ui.py` to draw player inventory onto the screen.
+- [ ] Update `UIManager` to briefly show event notifications ("Collected wood") onscreen.
 
 ---
 

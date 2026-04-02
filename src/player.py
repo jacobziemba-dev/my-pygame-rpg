@@ -1,4 +1,5 @@
 import pygame
+import os
 from src.inventory import Inventory
 
 class Player: 
@@ -7,6 +8,15 @@ class Player:
         self.color = (0, 128, 255)
         self.speed = 4
         self.inventory = Inventory()
+        
+        self.image = None
+        sprite_path = os.path.join("assets", "sprites", "player.png")
+        if os.path.exists(sprite_path):
+            try:
+                self.image = pygame.image.load(sprite_path).convert_alpha()
+                self.image = pygame.transform.scale(self.image, (self.rect.width, self.rect.height))
+            except pygame.error:
+                pass
 
     def update(self):
         keys = pygame.key.get_pressed()
@@ -22,7 +32,10 @@ class Player:
         self.rect.clamp_ip(pygame.Rect(0, 0, 800, 600))
 
     def draw(self, surface): #* draw function is used to draw the player character on the screen
-        pygame.draw.rect(surface, self.color, self.rect)
+        if self.image:
+            surface.blit(self.image, self.rect)
+        else:
+            pygame.draw.rect(surface, self.color, self.rect)
 
 
 
