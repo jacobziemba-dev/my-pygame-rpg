@@ -29,7 +29,7 @@ python main.py
 
 ---
 
-> **Currently working on:** v0.1.5 — 🕹️ Player Movement
+> **Currently working on:** v0.3 — 🗂️ Code Structure
 
 ---
 
@@ -49,11 +49,11 @@ These milestones make up the MVP — a playable RPG with movement, combat, and p
 
 ### v0.1.5 — 🕹️ Player Movement
 
-- [ ] Add `speed` to the `Player` class
-- [ ] Add `update()` to read keyboard input and move the player
-- [ ] Call `player.update()` in the main loop before drawing
-- [ ] Clamp position so the player cannot move off screen
-- [ ] 📸 Screenshot: player moving around the screen
+- [x] Add `speed` to the `Player` class
+- [x] Add `update()` to read keyboard input and move the player
+- [x] Call `player.update()` in the main loop before drawing
+- [x] Clamp position so the player cannot move off screen
+- [x] 📸 Screenshot: player moving around the screen
 
 ---
 
@@ -61,25 +61,25 @@ These milestones make up the MVP — a playable RPG with movement, combat, and p
 
 **🌱 Resources:**
 
-- [ ] Wood and stone spawn at random positions at game start
-- [ ] Press **E** to collect a resource when the player overlaps it
-- [ ] Remove the resource from the world after collecting
+- [x] Wood and stone spawn at random positions at game start
+- [x] Press **E** to collect a resource when the player overlaps it
+- [x] Remove the resource from the world after collecting
 
 **🎒 Inventory:**
 
-- [ ] Store collected items as a dictionary — example: `{ "wood": 2, "stone": 1 }`
-- [ ] Show inventory updates in the console
+- [x] Store collected items as a dictionary — example: `{ "wood": 2, "stone": 1 }`
+- [x] Show inventory updates in the console
 
 **⚒️ Crafting:**
 
-- [ ] Press **C** to craft a sword (requires wood + stone)
-- [ ] Show a success message if crafting works
-- [ ] Show a helpful error if resources are missing
+- [x] Press **C** to craft a sword (requires wood + stone)
+- [x] Show a success message if crafting works
+- [x] Show a helpful error if resources are missing
 
 **📁 Code:**
 
-- [ ] Add `ResourceItem` and `Inventory` classes in `src/`
-- [ ] 📸 Screenshot: resources on the map, console showing inventory and crafting
+- [x] Add `ResourceItem` and `Inventory` classes in `src/`
+- [x] 📸 Screenshot: resources on the map, console showing inventory and crafting
 
 ---
 
@@ -186,12 +186,11 @@ Features to add after the core game is complete.
 
 ## 📋 Tasks
 
-Next steps for **v0.1.5 — 🕹️ Player Movement**:
+Next steps for **v0.3 — 🗂️ Code Structure**:
 
-- [ ] ⚡ Add `self.speed = 4` to `Player.__init__` in [src/player.py](src/player.py)
-- [ ] ⌨️ Add `Player.update()` that calls `pygame.key.get_pressed()` and updates `self.rect`
-- [ ] 🔁 Call `player.update()` in [main.py](main.py) before `player.draw()`
-- [ ] 🛑 Clamp `self.rect` so the player stays inside the screen bounds
+- [ ] Create `src/game_manager.py` with a `GameManager` class.
+- [ ] Move the main game loop, event handling, and rendering into `GameManager.run()`.
+- [ ] Keep `main.py` clean — it should just initialize and start the `GameManager`.
 
 ---
 

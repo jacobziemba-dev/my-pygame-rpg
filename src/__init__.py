@@ -2,6 +2,8 @@
 #! You can use that __init__.py file to make your imports cleaner in your main script
 
 from .player import Player 
+from .resource_item import ResourceItem
+from .inventory import Inventory
 
 
 
