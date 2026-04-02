@@ -37,23 +37,3 @@ Below is an analysis focusing on the four requested "jewels" and recommendations
     * **Entity Component System (ECS) or Generic EntityManager:** Instead of managing `self.enemies` and `self.resources` separately, maintain a central list of entities. This allows new entity types (like minions, projectiles, or NPCs) to be dropped into the game loop instantly without rewriting core engine code.
 
 ---
-
-## Integrating Missing Mechanics: A Scalable Approach to Minion Summoning
-
-Since minion summoning is highly requested but missing, here is the architectural blueprint to integrate it seamlessly:
-
-1. **The Summoning Skill:**
-   Update the `SkillManager` to dynamically load skills from a config, or at minimum, add a `Summoning` skill. Allow XP gain when using specific summoning items (e.g., Runes, Bones).
-
-2. **The `Minion` Entity Class:**
-   Create a `Minion` class that inherits from the recommended base `Entity` class (which shares `hp`, `rect`, and basic drawing with the `Player`).
-   * **AI Logic (Update method):** Minions should utilize the aforementioned FSM. Their logic should find the nearest entity in the `enemies` list using spatial partitioning, pathfind to them, and attack when in range.
-   * **Lifespan/Follow:** Give minions a lifespan timer or a distance constraint to prevent them from wandering too far from the `Player`.
-
-3. **Summoning Mechanics & Action Manager:**
-   * Create a new item type (e.g., "Summoning Pouch").
-   * In the `ActionManager`, handle the "Use Pouch" intent.
-   * When successful, deduct the item, apply Summoning XP, and instantiate a new `Minion` object at `player.rect.x + offset`.
-   * Inject this minion into a generic `EntityManager` (or a `self.minions` list if sticking to the current architecture) so the main loop automatically calls its `update()` and `draw()` methods.
-
-By refactoring towards a data-driven, ECS/Group-based architecture first, dropping in complex mechanics like Minion Summoning becomes a matter of adding configuration data rather than rewriting core game loops.
