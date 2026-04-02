@@ -23,7 +23,12 @@ class ResourceNode:
             except pygame.error:
                 pass
                 
-        self.active_color = (0, 200, 0) if node_type == "tree" else (150, 150, 150)
+        if node_type == "tree":
+            self.active_color = (0, 200, 0)
+        elif node_type == "iron_rock":
+            self.active_color = (180, 80, 20)
+        else:
+            self.active_color = (150, 150, 150)
         self.dead_color = (100, 100, 100)
 
     def update(self):

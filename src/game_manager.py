@@ -8,6 +8,7 @@ from src.enemy import Enemy
 from src.camera import Camera
 from src.save_manager import SaveManager
 from src.action_manager import ActionManager
+from src.inventory import RECIPES
 
 class GameManager:
     def __init__(self):
@@ -43,6 +44,11 @@ class GameManager:
             rx = random.randint(50, 2350)
             ry = random.randint(50, 2350)
             self.resources.append(ResourceNode(rx, ry, "rock", 35, "pickaxe", "stone", hp=3, respawn_time=20000))
+
+        for _ in range(8):
+            rx = random.randint(50, 2350)
+            ry = random.randint(50, 2350)
+            self.resources.append(ResourceNode(rx, ry, "iron_rock", 50, "pickaxe", "iron_ore", hp=3, respawn_time=30000))
             
         for _ in range(5):
             rx = random.randint(50, 2350)
@@ -69,6 +75,23 @@ class GameManager:
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
+                # Crafting menu consumes input when open
+                if self.ui.show_crafting:
+                    if event.key == pygame.K_ESCAPE or event.key == pygame.K_c:
+                        self.ui.show_crafting = False
+                    elif event.key == pygame.K_UP:
+                        self.ui.crafting_index = max(0, self.ui.crafting_index - 1)
+                    elif event.key == pygame.K_DOWN:
+                        self.ui.crafting_index = min(len(RECIPES) - 1, self.ui.crafting_index + 1)
+                    elif event.key == pygame.K_RETURN:
+                        recipe = RECIPES[self.ui.crafting_index]
+                        success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level)
+                        if success:
+                            self.player.skills.gain_xp("crafting", result)
+                            self.ui.show_message(f"{recipe['label']} crafted! (+{result} Crafting XP)")
+                        else:
+                            self.ui.show_message(result)
+                    continue
                 if event.key == pygame.K_e:
                     # Collect resource or start action
                     for item in self.resources[:]:
@@ -96,14 +119,12 @@ class GameManager:
                     else:
                         self.ui.show_message("No Save File found.")
                 elif event.key == pygame.K_c:
-                    # Craft sword
-                    if self.player.inventory.craft("sword"):
-                        self.player.skills.gain_xp("crafting", 10)
-                        self.ui.show_message("Success! Sword crafted. (+10 Crafting XP)")
-                    else:
-                        self.ui.show_message("Failed to craft sword. Need 1 wood and 1 stone.")
+                    self.ui.show_crafting = True
+                    self.ui.crafting_index = 0
                 elif event.key == pygame.K_RETURN:
-                    if self.player.equip("sword"):
+                    if self.player.equip("iron_sword"):
+                        self.ui.show_message("Iron Sword equipped! Attack +10")
+                    elif self.player.equip("sword"):
                         self.ui.show_message("Sword equipped! Attack +5")
                     else:
                         self.ui.show_message("No sword in inventory to equip.")
@@ -132,7 +153,8 @@ class GameManager:
 
     def update(self):
         if self.player.hp > 0:
-            self.player.update()
+            if not self.ui.show_crafting:
+                self.player.update()
             
             # Action Manager Ticks (once per 1000ms)
             current_time = pygame.time.get_ticks()

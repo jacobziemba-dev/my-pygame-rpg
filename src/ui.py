@@ -11,6 +11,8 @@ class UIManager:
         self.message_timer = 0
         self.message_duration = 3000 # 3 seconds in ms
         self.show_skills = False
+        self.show_crafting = False
+        self.crafting_index = 0
 
     def show_message(self, text):
         self.message = text
@@ -53,19 +55,73 @@ class UIManager:
         hp_text = self.font.render(f"HP: {self.player.hp}/{self.player.max_hp}", True, (255, 255, 255))
         surface.blit(hp_text, (hp_x, hp_y - 20))
 
-        # Draw Skills panel hint
+        # Draw panel hints (top-right)
         hint_surf = self.font.render("[K] Skills", True, (160, 160, 160))
         surface.blit(hint_surf, (surface.get_width() - 90, 10))
+        hint2_surf = self.font.render("[C] Craft", True, (160, 160, 160))
+        surface.blit(hint2_surf, (surface.get_width() - 90, 30))
 
-        # Draw Skills overlay
+        # Draw overlays
         if self.show_skills:
             self._draw_skills_panel(surface)
+        if self.show_crafting:
+            self._draw_crafting_menu(surface)
 
         # Draw Message
         if self.message:
             msg_surf = self.large_font.render(self.message, True, (255, 255, 0))
             msg_rect = msg_surf.get_rect(center=(surface.get_width() // 2, 50))
             surface.blit(msg_surf, msg_rect)
+
+    def _draw_crafting_menu(self, surface):
+        from src.inventory import RECIPES
+        panel_w, panel_h = 400, 300
+        panel_x = (surface.get_width() - panel_w) // 2
+        panel_y = (surface.get_height() - panel_h) // 2
+
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel.fill((20, 20, 20, 220))
+        surface.blit(panel, (panel_x, panel_y))
+
+        # Header
+        title = self.font.render("Crafting Menu", True, (255, 215, 0))
+        surface.blit(title, (panel_x + 10, panel_y + 8))
+        controls = self.font.render("[ESC] Close  [↑↓] Select  [Enter] Craft", True, (140, 140, 140))
+        surface.blit(controls, (panel_x + 10, panel_y + 28))
+        pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + 48), (panel_x + panel_w, panel_y + 48))
+
+        crafting_level = self.player.skills.crafting.level
+
+        # Recipe list
+        list_top = panel_y + 54
+        for i, recipe in enumerate(RECIPES):
+            row_y = list_top + i * 22
+            if row_y > panel_y + panel_h - 86:
+                break
+            can_level = crafting_level >= recipe["min_level"]
+            can_items = all(self.player.inventory.items.get(k, 0) >= v for k, v in recipe["inputs"].items())
+
+            if i == self.crafting_index:
+                pygame.draw.rect(surface, (60, 55, 15), (panel_x + 4, row_y - 2, panel_w - 8, 20))
+
+            name_color = (220, 220, 220) if can_level else (90, 90, 90)
+            status = "✓" if (can_level and can_items) else ("✗ Lv." + str(recipe["min_level"]) if not can_level else "✗ items")
+            status_color = (80, 200, 80) if (can_level and can_items) else (200, 80, 80)
+
+            label = f"{'>' if i == self.crafting_index else ' '} {recipe['label']}"
+            surface.blit(self.font.render(label, True, name_color), (panel_x + 8, row_y))
+            status_surf = self.font.render(status, True, status_color)
+            surface.blit(status_surf, (panel_x + panel_w - status_surf.get_width() - 10, row_y))
+
+        # Detail section
+        pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + panel_h - 76), (panel_x + panel_w, panel_y + panel_h - 76))
+        if 0 <= self.crafting_index < len(RECIPES):
+            r = RECIPES[self.crafting_index]
+            inputs_str = ",  ".join(f"{v}x {k.replace('_', ' ')}" for k, v in r["inputs"].items())
+            outputs_str = ",  ".join(f"{v}x {k.replace('_', ' ')}" for k, v in r["outputs"].items())
+            surface.blit(self.font.render(f"In:  {inputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 70))
+            surface.blit(self.font.render(f"Out: {outputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 48))
+            surface.blit(self.font.render(f"XP:  +{r['xp']} Crafting", True, (160, 210, 160)), (panel_x + 10, panel_y + panel_h - 26))
 
     def _draw_skills_panel(self, surface):
         panel_w, panel_h = 220, 140

@@ -84,7 +84,9 @@ class Player:
 
     def get_attack(self):
         attack = self.base_attack
-        if "sword" in self.equipped_items:
+        if "iron_sword" in self.equipped_items:
+            attack += 10
+        elif "sword" in self.equipped_items:
             attack += 5
         return attack
 
