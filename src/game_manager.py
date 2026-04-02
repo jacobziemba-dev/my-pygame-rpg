@@ -78,6 +78,10 @@ class GameManager:
                                 self.player.inventory.add_item("wood", 10)
                                 self.player.inventory.add_item("stone", 10)
                                 self.ui.show_message("Opened Chest! Huge Loot gained.")
+                            elif isinstance(item, ResourceItem):
+                                self.resources.remove(item)
+                                self.player.inventory.add_item(item.resource_type, 1)
+                                self.ui.show_message(f"Picked up 1 {item.resource_type}!")
                             elif isinstance(item, ResourceNode) and item.is_active:
                                 self.player.current_action = "gathering"
                                 self.player.action_target = item
