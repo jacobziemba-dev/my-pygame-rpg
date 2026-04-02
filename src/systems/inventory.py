@@ -1,14 +1,3 @@
-RECIPES = [
-    {"name": "sword",        "label": "Sword",        "inputs": {"wood": 1, "stone": 1}, "outputs": {"sword": 1},        "min_level": 1, "xp": 10},
-    {"name": "iron_bar",     "label": "Iron Bar",     "inputs": {"iron_ore": 2},          "outputs": {"iron_bar": 1},     "min_level": 3, "xp": 15, "station": "furnace", "duration": 2000},
-    {"name": "iron_sword",   "label": "Iron Sword",   "inputs": {"iron_bar": 2},          "outputs": {"iron_sword": 1},   "min_level": 5, "xp": 25, "station": "workbench"},
-    {"name": "iron_axe",     "label": "Iron Axe",     "inputs": {"iron_bar": 2},          "outputs": {"iron_axe": 1},     "min_level": 5, "xp": 20, "station": "workbench"},
-    {"name": "iron_pickaxe", "label": "Iron Pickaxe", "inputs": {"iron_bar": 2},          "outputs": {"iron_pickaxe": 1}, "min_level": 5, "xp": 20, "station": "workbench"},
-    {"name": "bread",        "label": "Bread",        "inputs": {"wheat": 3},             "outputs": {"bread": 1},        "min_level": 1, "xp": 10},
-    {"name": "iron_armor",   "label": "Iron Armor",   "inputs": {"iron_bar": 5},          "outputs": {"iron_armor": 1},   "min_level": 7, "xp": 50, "station": "workbench"},
-]
-
-
 class Inventory:
     def __init__(self):
         self.items = {
@@ -29,8 +18,8 @@ class Inventory:
             return True
         return False
 
-    def craft(self, recipe_name, crafting_level=1):
-        recipe = next((r for r in RECIPES if r["name"] == recipe_name), None)
+    def craft(self, recipe_name, crafting_level=1, recipe_manager=None):
+        recipe = recipe_manager.get_by_name(recipe_name) if recipe_manager else None
         if not recipe:
             return False, "Unknown recipe."
         if crafting_level < recipe["min_level"]:
