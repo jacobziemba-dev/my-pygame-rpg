@@ -22,12 +22,14 @@ class SkillManager:
         self.woodcutting = Skill("Woodcutting")
         self.mining      = Skill("Mining")
         self.farming     = Skill("Farming")
+        self.foraging    = Skill("Foraging")
         self.melee       = Skill("Melee")
         self.crafting    = Skill("Crafting")
         self._skills = {
             "woodcutting": self.woodcutting,
             "mining":      self.mining,
             "farming":     self.farming,
+            "foraging":    self.foraging,
             "melee":       self.melee,
             "crafting":    self.crafting,
         }

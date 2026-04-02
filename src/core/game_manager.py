@@ -66,6 +66,11 @@ class GameManager:
             ry = random.randint(50, MAP_HEIGHT - 50)
             self.resources.append(ResourceNode(rx, ry, "iron_rock", 50, "pickaxe", "iron_ore", hp=3, respawn_time=30000, min_level=5))
 
+        for _ in range(NUM_BUSHES):
+            rx = random.randint(50, MAP_WIDTH - 50)
+            ry = random.randint(50, MAP_HEIGHT - 50)
+            self.resources.append(ResourceNode(rx, ry, "bush", 10, None, "fiber", hp=2, respawn_time=10000, min_level=1))
+
     def _generate_enemies(self):
         for _ in range(NUM_ENEMIES):
             ex = random.randint(50, MAP_WIDTH - 50)
@@ -361,7 +366,7 @@ class GameManager:
 
         # Check for resources/items
         for item in self.resources[:]:
-            if self.player.rect.colliderect(item.rect):
+            if self.player.rect.inflate(10, 10).colliderect(item.rect):
                 if isinstance(item, ResourceItem):
                     self.player.inventory.add_item(item.resource_type, 1)
                     self.ui.show_message(f"Picked up 1 {item.resource_type}!")

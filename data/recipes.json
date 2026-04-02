@@ -61,6 +61,14 @@
       "min_level": 7,
       "xp": 50,
       "station": "workbench"
+    },
+    {
+      "name": "rope",
+      "label": "Rope",
+      "inputs": {"fiber": 3},
+      "outputs": {"rope": 1},
+      "min_level": 1,
+      "xp": 5
     }
   ]
 }
