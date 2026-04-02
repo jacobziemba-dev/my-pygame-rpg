@@ -28,7 +28,7 @@ python main.py
 
 ---
 
-> **Currently working on:** v1.0 — ⚒️ Advanced Forging & Menus
+> **Currently working on:** v1.1 — 🏡 Agriculture & Storage
 
 ---
 
@@ -194,9 +194,9 @@ Moving forward, the architecture will be heavily focused on single-player scalab
 
 ### v1.0 — ⚒️ Advanced Forging & Menus
 
-- [ ] Implement multi-step refinement chains (e.g., mining Ore -> smelting Bars -> forging Weapons).
-- [ ] Create a dedicated pop-up Crafting Menu UI to replace the simple single-key press, allowing for dozens of dynamic recipes.
-- [ ] Tie advanced recipes strictly to high `Crafting` skill thresholds.
+- [x] Implement multi-step refinement chains (e.g., mining Ore -> smelting Bars -> forging Weapons).
+- [x] Create a dedicated pop-up Crafting Menu UI to replace the simple single-key press, allowing for dozens of dynamic recipes.
+- [x] Tie advanced recipes strictly to high `Crafting` skill thresholds.
 
 ---
 
@@ -209,11 +209,11 @@ Moving forward, the architecture will be heavily focused on single-player scalab
 
 Next steps for **v1.0 — ⚒️ Advanced Forging & Menus**:
 
-- [ ] Add `RECIPES` list to `src/inventory.py` and refactor `craft()` to use it with Crafting skill level gating.
-- [ ] Add `iron_rock` node type to the world and update `ResourceNode.draw()` for its color.
-- [ ] Build a pop-up Crafting Menu in `UIManager` — toggled with `C`, navigated with arrow keys, confirmed with Enter.
-- [ ] Update `src/game_manager.py` to route menu input, block movement while menu is open, and handle `iron_sword` equip.
-- [ ] Update `Player.get_attack()` to apply +10 bonus for `iron_sword`.
+- [x] Add `RECIPES` list to `src/inventory.py` and refactor `craft()` to use it with Crafting skill level gating.
+- [x] Add `iron_rock` node type to the world and update `ResourceNode.draw()` for its color.
+- [x] Build a pop-up Crafting Menu in `UIManager` — toggled with `C`, navigated with arrow keys, confirmed with Enter.
+- [x] Update `src/game_manager.py` to route menu input, block movement while menu is open, and handle `iron_sword` equip.
+- [x] Update `Player.get_attack()` to apply +10 bonus for `iron_sword`.
 
 - 🖥️ Screen size: **800x600** (may change)
 - 🐍 Python 3.x + Pygame required
