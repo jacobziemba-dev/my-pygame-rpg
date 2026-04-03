@@ -11,6 +11,7 @@ from src.entities.crop import Crop
 from src.core.camera import Camera
 from src.systems.save_manager import SaveManager
 from src.systems.action_manager import ActionManager
+from src.systems.pathfinder import find_path
 from src.systems.recipe_manager import RecipeManager
 from src.entities.projectile import Projectile
 from src.core.settings import *
@@ -158,7 +159,13 @@ class GameManager:
                      clicked_entity = crop
                      break
 
-        self.player.set_target_destination(world_x, world_y, target_entity=clicked_entity)
+        obstacles = self._get_solid_obstacles()
+        path = find_path(
+            (self.player.rect.centerx, self.player.rect.centery),
+            (world_x, world_y),
+            obstacles
+        )
+        self.player.set_target_destination(world_x, world_y, target_entity=clicked_entity, waypoints=path or None)
 
             
     def handle_events(self):

@@ -65,6 +65,7 @@ All drawable objects extend `Entity` (base class with sprite/animation support).
 - **skill_manager.py** — 30+ skills across Combat, Gathering, Artisan, and Support categories. XP threshold per level = `level × 50`. Handles legacy save key migration (melee→strength, foraging→hunter).
 - **action_manager.py** — Processes gathering and combat actions on a 1000ms tick. Calculates success chance from tool power, skill level, and node difficulty. Awards XP and status messages.
 - **save_manager.py** — Full world persistence to `data/save.json`: player state, inventory, bank, skills, resource nodes (with respawn timers), enemies, crops, and station queues.
+- **pathfinder.py** — A* pathfinding on a 75×75 tile grid (2400÷32). Called on every left-click in `GameManager.handle_world_click()`. Returns a smoothed list of world-space waypoints. When the destination is inside a solid obstacle (e.g. clicking a tree), BFS finds the nearest walkable adjacent tile. Path smoothing uses Bresenham line-of-sight to skip unnecessary waypoints.
 
 ### UI (`src/ui/ui.py`)
 
@@ -85,6 +86,7 @@ Sprites live in `assets/sprites/{entity_type}/{animation_name}/` as numbered PNG
 - **Action ticking**: Long-running actions (gathering, attacking) are processed once per 1000ms tick by `ActionManager` (gathering) or inline in `GameManager.update()` (combat), independent of the 60 FPS render loop.
 - **Combat branching**: The 1000ms combat tick checks `player.has_bow()` — if true, it spawns a `Projectile` toward the target (ranged); otherwise it uses the inflate(40,40) melee collision check. Projectiles update every frame.
 - **Data-driven crafting**: Adding a recipe requires only a `recipes.json` edit, not code changes. Add a `"skill"` field to route XP to a skill other than `crafting`.
-- **Point-and-click interaction**: Clicking an entity sets the player's movement target and desired action; the action fires once the player is in range.
+- **Point-and-click interaction**: Clicking an entity pathfinds to the nearest walkable tile adjacent to it, then triggers the interaction (gather, attack, open) only after the player arrives at the final waypoint. Intermediate waypoints never fire interactions.
+- **Waypoint movement**: `player.set_target_destination()` accepts an optional `waypoints` list from the pathfinder. The player walks through each waypoint in order; only arrival at the last waypoint triggers snapping and interaction logic.
 - **Solid-object collision**: Axis-separated collision resolution is applied to all entity movement. `resolve_collision_x` / `resolve_collision_y` helpers live in `entity.py`. `GameManager._get_solid_obstacles()` builds a list of collidable rects each frame (active non-fishing ResourceNodes, stations, bank) and passes it to `player.update()` and `enemy.update()`. Enemies also treat the player rect as an obstacle to prevent clipping through. Depleted nodes and fishing spots are passable.
 - **Y-sorted rendering**: Entities with depth (stations, enemies, bank, player) are sorted by `rect.bottom` each frame before drawing, so lower entities appear in front of higher ones. Ground-level objects (resource nodes, crops, projectiles) are drawn first without sorting.

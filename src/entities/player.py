@@ -29,6 +29,7 @@ class Player(Entity):
 
         self.target_destination = None
         self.interaction_target = None
+        self.waypoints = []
         
         # Animations
         self.import_assets()
@@ -82,8 +83,13 @@ class Player(Entity):
 
         self.image = animation[int(self.frame_index)]
 
-    def set_target_destination(self, x, y, target_entity=None):
-        self.target_destination = (x, y)
+    def set_target_destination(self, x, y, target_entity=None, waypoints=None):
+        if waypoints:
+            self.waypoints = list(waypoints[1:])
+            self.target_destination = waypoints[0]
+        else:
+            self.waypoints = []
+            self.target_destination = (x, y)
         self.interaction_target = target_entity
         self.current_action = None
         self.action_target = None
@@ -111,59 +117,71 @@ class Player(Entity):
                 resolve_collision_y(self.rect, obstacles)
                 moved = True
             else:
-                self.rect.centerx = tx
-                self.rect.centery = ty
-                self.target_destination = None
-                
-                # Arrived at target, initiate interaction if there is one
-                if self.interaction_target:
-                    if hasattr(self.interaction_target, 'is_active') and self.interaction_target.is_active:
-                         # It's a resource node
-                         self.current_action = "gathering"
-                         self.action_target = self.interaction_target
-                         if hasattr(self.game_manager, 'ui'):
-                             self.game_manager.ui.show_message(f"Started gathering {self.interaction_target.node_type}...")
-                    elif hasattr(self.interaction_target, 'hp') and hasattr(self.interaction_target, 'max_hp'):
-                         # It's an enemy
-                         self.current_action = "attacking"
-                         self.action_target = self.interaction_target
-                    elif hasattr(self.interaction_target, 'station_type'):
-                         # It's a station
-                         station = self.interaction_target
-                         collected = station.collect(self)
-                         if hasattr(self.game_manager, 'ui'):
-                             if collected > 0:
-                                 self.game_manager.ui.show_message(f"Collected {collected} items!")
-                             else:
-                                 self.game_manager.ui.active_station = station
-                                 self.game_manager.ui.station_index = 0
-                                 self.game_manager.ui.show_message(f"Opened {station.name}.")
-                    elif hasattr(self.interaction_target, 'inventory') and hasattr(self.interaction_target, 'rect') and not hasattr(self.interaction_target, 'image'):
-                         # It's a chest
-                         if hasattr(self.game_manager, 'ui'):
-                             self.game_manager.ui.active_chest = self.interaction_target
-                             self.game_manager.ui.show_message("Opened chest storage.")
-                    elif hasattr(self.interaction_target, 'inventory') and hasattr(self.interaction_target, 'rect') and hasattr(self.interaction_target, 'image'):
-                         # It's the Bank
-                         if hasattr(self.game_manager, 'ui'):
-                             self.game_manager.ui.active_bank = True
-                             self.game_manager.ui.show_message("Opened bank vault.")
-                    elif hasattr(self.interaction_target, 'resource_type'):
-                         # It's a dropped item
-                         item = self.interaction_target
-                         if item in self.game_manager.resources:
-                             if item.resource_type == "chest":
-                                 self.inventory.add_item("wood", 10)
-                                 self.inventory.add_item("stone", 10)
-                                 if hasattr(self.game_manager, 'ui'):
-                                    self.game_manager.ui.show_message("Opened Chest! Huge Loot gained.")
-                             else:
-                                 self.inventory.add_item(item.resource_type, 1)
-                                 if hasattr(self.game_manager, 'ui'):
-                                    self.game_manager.ui.show_message(f"Picked up 1 {item.resource_type}!")
-                             self.game_manager.resources.remove(item)
-                    
-                    self.interaction_target = None
+                if self.waypoints:
+                    # Intermediate waypoint reached — advance to next, no interaction yet
+                    self.target_destination = self.waypoints.pop(0)
+                else:
+                    # Final destination reached — snap and trigger interaction
+                    if not self.interaction_target:
+                        test = self.rect.copy()
+                        test.centerx = tx
+                        test.centery = ty
+                        if not any(test.colliderect(obs) for obs in obstacles):
+                            self.rect.centerx = tx
+                            self.rect.centery = ty
+                    else:
+                        self.rect.centerx = tx
+                        self.rect.centery = ty
+                    self.target_destination = None
+
+                    if self.interaction_target:
+                        if hasattr(self.interaction_target, 'is_active') and self.interaction_target.is_active:
+                             # It's a resource node
+                             self.current_action = "gathering"
+                             self.action_target = self.interaction_target
+                             if hasattr(self.game_manager, 'ui'):
+                                 self.game_manager.ui.show_message(f"Started gathering {self.interaction_target.node_type}...")
+                        elif hasattr(self.interaction_target, 'hp') and hasattr(self.interaction_target, 'max_hp'):
+                             # It's an enemy
+                             self.current_action = "attacking"
+                             self.action_target = self.interaction_target
+                        elif hasattr(self.interaction_target, 'station_type'):
+                             # It's a station
+                             station = self.interaction_target
+                             collected = station.collect(self)
+                             if hasattr(self.game_manager, 'ui'):
+                                 if collected > 0:
+                                     self.game_manager.ui.show_message(f"Collected {collected} items!")
+                                 else:
+                                     self.game_manager.ui.active_station = station
+                                     self.game_manager.ui.station_index = 0
+                                     self.game_manager.ui.show_message(f"Opened {station.name}.")
+                        elif hasattr(self.interaction_target, 'inventory') and hasattr(self.interaction_target, 'rect') and not hasattr(self.interaction_target, 'image'):
+                             # It's a chest
+                             if hasattr(self.game_manager, 'ui'):
+                                 self.game_manager.ui.active_chest = self.interaction_target
+                                 self.game_manager.ui.show_message("Opened chest storage.")
+                        elif hasattr(self.interaction_target, 'inventory') and hasattr(self.interaction_target, 'rect') and hasattr(self.interaction_target, 'image'):
+                             # It's the Bank
+                             if hasattr(self.game_manager, 'ui'):
+                                 self.game_manager.ui.active_bank = True
+                                 self.game_manager.ui.show_message("Opened bank vault.")
+                        elif hasattr(self.interaction_target, 'resource_type'):
+                             # It's a dropped item
+                             item = self.interaction_target
+                             if item in self.game_manager.resources:
+                                 if item.resource_type == "chest":
+                                     self.inventory.add_item("wood", 10)
+                                     self.inventory.add_item("stone", 10)
+                                     if hasattr(self.game_manager, 'ui'):
+                                        self.game_manager.ui.show_message("Opened Chest! Huge Loot gained.")
+                                 else:
+                                     self.inventory.add_item(item.resource_type, 1)
+                                     if hasattr(self.game_manager, 'ui'):
+                                        self.game_manager.ui.show_message(f"Picked up 1 {item.resource_type}!")
+                                 self.game_manager.resources.remove(item)
+
+                        self.interaction_target = None
                     
 
         # Keyboard fallback
