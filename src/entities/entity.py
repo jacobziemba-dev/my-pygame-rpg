@@ -36,3 +36,21 @@ class Entity(pygame.sprite.Sprite):
             surface.blit(self.image, draw_rect)
         elif hasattr(self, 'color'):
             pygame.draw.rect(surface, self.color, draw_rect)
+
+
+def resolve_collision_x(rect, obstacles):
+    for obs in obstacles:
+        if rect.colliderect(obs):
+            if rect.centerx < obs.centerx:
+                rect.right = obs.left
+            else:
+                rect.left = obs.right
+
+
+def resolve_collision_y(rect, obstacles):
+    for obs in obstacles:
+        if rect.colliderect(obs):
+            if rect.centery < obs.centery:
+                rect.bottom = obs.top
+            else:
+                rect.top = obs.bottom

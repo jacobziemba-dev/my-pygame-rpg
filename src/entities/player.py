@@ -4,7 +4,7 @@ import math
 from src.systems.inventory import Inventory
 from src.systems.skill_manager import SkillManager
 from src.core.settings import *
-from src.entities.entity import Entity
+from src.entities.entity import Entity, resolve_collision_x, resolve_collision_y
 
 class Player(Entity): 
     def __init__(self, x, y, game_manager):
@@ -88,7 +88,9 @@ class Player(Entity):
         self.current_action = None
         self.action_target = None
 
-    def update(self, dt):
+    def update(self, dt, obstacles=None):
+        if obstacles is None:
+            obstacles = []
         moved = False
         self.direction.xy = (0, 0)
         if self.target_destination:
@@ -104,7 +106,9 @@ class Player(Entity):
                 self.direction.x = dx_norm
                 self.direction.y = dy_norm
                 self.rect.x += dx_norm * self.speed * dt * 60
+                resolve_collision_x(self.rect, obstacles)
                 self.rect.y += dy_norm * self.speed * dt * 60
+                resolve_collision_y(self.rect, obstacles)
                 moved = True
             else:
                 self.rect.centerx = tx
@@ -167,21 +171,25 @@ class Player(Entity):
         if keys[pygame.K_w] or keys[pygame.K_UP]:
             self.direction.y = -1
             self.rect.y -= self.speed * dt * 60
+            resolve_collision_y(self.rect, obstacles)
             moved = True
             self.target_destination = None
         if keys[pygame.K_s] or keys[pygame.K_DOWN]:
             self.direction.y = 1
             self.rect.y += self.speed * dt * 60
+            resolve_collision_y(self.rect, obstacles)
             moved = True
             self.target_destination = None
         if keys[pygame.K_a] or keys[pygame.K_LEFT]:
             self.direction.x = -1
             self.rect.x -= self.speed * dt * 60
+            resolve_collision_x(self.rect, obstacles)
             moved = True
             self.target_destination = None
         if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
             self.direction.x = 1
             self.rect.x += self.speed * dt * 60
+            resolve_collision_x(self.rect, obstacles)
             moved = True
             self.target_destination = None
             

@@ -462,10 +462,21 @@ class GameManager:
                     self._on_enemy_defeated_xp()
                 return
 
+    def _get_solid_obstacles(self):
+        obstacles = []
+        for item in self.resources:
+            if isinstance(item, ResourceNode) and item.is_active and item.node_type != "fishing_spot":
+                obstacles.append(item.rect)
+        for station in self.stations:
+            obstacles.append(station.rect)
+        obstacles.append(self.bank.rect)
+        return obstacles
+
     def update(self, dt):
         if self.player.hp > 0:
+            obstacles = self._get_solid_obstacles()
             if not self.ui.show_crafting:
-                self.player.update(dt)
+                self.player.update(dt, obstacles)
             
             for crop in self.crops:
                 crop.update()
@@ -526,8 +537,8 @@ class GameManager:
                     item.update()
             
             for enemy in self.enemies:
-                enemy.update(self.player, dt)
-                if enemy.rect.colliderect(self.player.rect):
+                enemy.update(self.player, dt, obstacles + [self.player.rect])
+                if enemy.rect.inflate(4, 4).colliderect(self.player.rect):
                     if self.player.take_damage(10):
                         self.ui.show_message("-10 HP!")
 
@@ -559,18 +570,21 @@ class GameManager:
         self.screen.fill((0, 0, 0))
         # Draw Map background 
         pygame.draw.rect(self.screen, (20, 50, 20), self.camera.apply(pygame.Rect(0, 0, 2400, 2400))) 
+        # Draw ground-level objects first (no Y-sort needed)
         for item in self.resources:
             item.draw(self.screen, self.camera)
         for crop in self.crops:
             crop.draw(self.screen, self.camera)
-        for station in self.stations:
-            station.draw(self.screen, self.camera)
-        for enemy in self.enemies:
-            enemy.draw(self.screen, self.camera)
         for proj in self.projectiles:
             proj.draw(self.screen, self.camera)
-        self.bank.draw(self.screen, self.camera)
-        self.player.draw(self.screen, self.camera)
+
+        # Y-sort entities so lower ones draw on top (correct depth)
+        y_sorted = sorted(
+            self.stations + self.enemies + [self.bank, self.player],
+            key=lambda e: e.rect.bottom
+        )
+        for entity in y_sorted:
+            entity.draw(self.screen, self.camera)
         self.ui.draw(self.screen)
         if self.game_over:
             overlay = pygame.Surface((self.screen.get_width(), self.screen.get_height()), pygame.SRCALPHA)

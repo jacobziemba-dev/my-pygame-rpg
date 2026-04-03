@@ -72,7 +72,7 @@ Single `UIManager` class renders all HUD and overlay menus (inventory, crafting,
 
 ## Data Files
 
-- **`data/recipes.json`** — All crafting recipes. Each recipe defines: inputs, outputs, min skill level, XP reward, optional station type (`furnace`/`workbench`/`stove`), and optional duration. Modify here to add crafting without touching code.
+- **`data/recipes.json`** — All crafting recipes. Each recipe defines: inputs, outputs, min skill level, XP reward, optional station type (`furnace`/`workbench`/`stove`), optional duration, and optional `skill` (defaults to `"crafting"` if omitted). Modify here to add crafting without touching code.
 - **`data/save.json`** — Auto-generated save state. Safe to delete to reset the world.
 
 ## Asset Conventions
@@ -82,6 +82,7 @@ Sprites live in `assets/sprites/{entity_type}/{animation_name}/` as numbered PNG
 ## Key Design Patterns
 
 - **Manager pattern**: `GameManager` creates and holds references to all systems; systems do not hold references to each other directly — they receive what they need via method arguments.
-- **Action ticking**: Long-running actions (gathering, attacking) are processed once per 1000ms tick by `ActionManager`, independent of the 60 FPS render loop.
-- **Data-driven crafting**: Adding a recipe requires only a `recipes.json` edit, not code changes.
+- **Action ticking**: Long-running actions (gathering, attacking) are processed once per 1000ms tick by `ActionManager` (gathering) or inline in `GameManager.update()` (combat), independent of the 60 FPS render loop.
+- **Combat branching**: The 1000ms combat tick checks `player.has_bow()` — if true, it spawns a `Projectile` toward the target (ranged); otherwise it uses the inflate(40,40) melee collision check. Projectiles update every frame.
+- **Data-driven crafting**: Adding a recipe requires only a `recipes.json` edit, not code changes. Add a `"skill"` field to route XP to a skill other than `crafting`.
 - **Point-and-click interaction**: Clicking an entity sets the player's movement target and desired action; the action fires once the player is in range.

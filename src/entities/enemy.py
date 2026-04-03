@@ -1,7 +1,7 @@
 import math
 import pygame
 from src.core.settings import *
-from src.entities.entity import Entity
+from src.entities.entity import Entity, resolve_collision_x, resolve_collision_y
 
 class Enemy(Entity):
     def __init__(self, x, y):
@@ -14,16 +14,20 @@ class Enemy(Entity):
         
         self.image = None
 
-    def update(self, player, dt):
+    def update(self, player, dt, obstacles=None):
+        if obstacles is None:
+            obstacles = []
         dx = player.rect.centerx - self.rect.centerx
         dy = player.rect.centery - self.rect.centery
         dist = math.hypot(dx, dy)
-        
+
         if 0 < dist < self.aggro_range:
             dx_norm = dx / dist
             dy_norm = dy / dist
             self.rect.x += dx_norm * self.speed * dt * 60
+            resolve_collision_x(self.rect, obstacles)
             self.rect.y += dy_norm * self.speed * dt * 60
+            resolve_collision_y(self.rect, obstacles)
             
     def draw(self, surface, camera=None):
         super().draw(surface, camera)
