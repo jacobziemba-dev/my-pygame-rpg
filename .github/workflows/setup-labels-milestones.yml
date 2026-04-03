@@ -25,6 +25,7 @@ jobs:
               { name: "area:ui",             color: "c5def5", description: "User interface" },
               { name: "area:map",            color: "c5def5", description: "Map / world" },
               { name: "area:quests",         color: "c5def5", description: "Quest system" },
+              { name: "area:other",          color: "c5def5", description: "Other / uncategorized area" },
             ];
 
             for (const label of labels) {
