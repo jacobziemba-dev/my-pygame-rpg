@@ -41,6 +41,7 @@ class Player(Entity):
         self.inventory.add_item("bronze_axe", 1)
         self.inventory.add_item("bronze_pickaxe", 1)
         self.inventory.add_item("bronze_hoe", 1)
+        self.inventory.add_item("fishing_rod", 1)
         self.inventory.add_item("wheat_seeds", 5)
 
         self.image = None
@@ -235,14 +236,27 @@ class Player(Entity):
             defense += 15
         return defense
 
+    def get_ranged_attack(self):
+        base = 5
+        if "shortbow" in self.equipped_items:
+            base += 8
+        return base + (self.skills.ranged.level // 5)
+
+    def has_bow(self):
+        return "shortbow" in self.equipped_items
+
     def use_item(self, item_name):
         if self.inventory.items.get(item_name, 0) > 0:
             if item_name == "bread":
                 self.hp = min(self.max_hp, self.hp + 20)
                 self.inventory.remove_item(item_name, 1)
                 return True, "Healed 20 HP!"
+            if item_name == "cooked_fish":
+                self.hp = min(self.max_hp, self.hp + 15)
+                self.inventory.remove_item(item_name, 1)
+                return True, "Healed 15 HP with cooked fish!"
             # For gear, equip it
-            if item_name in ["sword", "iron_sword", "iron_armor"]:
+            if item_name in ["sword", "iron_sword", "iron_armor", "shortbow"]:
                 if item_name not in self.equipped_items:
                     # Unequip similar type? (simple version: just add)
                     self.inventory.remove_item(item_name, 1)

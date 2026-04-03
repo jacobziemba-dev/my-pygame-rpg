@@ -14,6 +14,7 @@ class ActionManager:
 
         skill_name = ("woodcutting" if node.node_type == "tree"
                       else "hunter" if node.node_type == "bush"
+                      else "fishing" if node.node_type == "fishing_spot"
                       else "mining")
         skill_level = getattr(player.skills, skill_name).level
         
@@ -34,7 +35,9 @@ class ActionManager:
                 "bronze_axe": {"type": "axe", "power": 15, "min_level": 1},
                 "iron_axe": {"type": "axe", "power": 30, "min_level": 5},
                 "bronze_pickaxe": {"type": "pickaxe", "power": 15, "min_level": 1},
-                "iron_pickaxe": {"type": "pickaxe", "power": 30, "min_level": 5}
+                "iron_pickaxe": {"type": "pickaxe", "power": 30, "min_level": 5},
+                "fishing_rod": {"type": "rod", "power": 20, "min_level": 1},
+                "iron_fishing_rod": {"type": "rod", "power": 35, "min_level": 5}
             }
 
             for item_name, count in player.inventory.items.items():

@@ -21,6 +21,8 @@ class Station:
             self.color = (80, 40, 20)
         elif self.station_type == "workbench":
             self.color = (120, 80, 40)
+        elif self.station_type == "stove":
+            self.color = (180, 90, 20)
             
     def start_processing(self, input_item, output_item, count, duration):
         self.input_item = input_item

@@ -12,6 +12,7 @@ from src.core.camera import Camera
 from src.systems.save_manager import SaveManager
 from src.systems.action_manager import ActionManager
 from src.systems.recipe_manager import RecipeManager
+from src.entities.projectile import Projectile
 from src.core.settings import *
 
 class GameManager:
@@ -30,6 +31,7 @@ class GameManager:
         
         self.enemies = []
         self._generate_enemies()
+        self.projectiles = []
 
         # Bank is 2×2 tiles; keep stations to the right with tile gaps so rects do not overlap.
         _hub_bank_x = PLAYER_START_X + 96
@@ -41,6 +43,9 @@ class GameManager:
         self.stations.append(Station(_station_x, _hub_bank_y, "furnace", "Furnace"))
         self.stations.append(
             Station(_station_x, _hub_bank_y + TILE_SIZE * 2, "workbench", "Workbench")
+        )
+        self.stations.append(
+            Station(_station_x, _hub_bank_y + TILE_SIZE * 4, "stove", "Stove")
         )
 
         self.crops = []
@@ -77,6 +82,11 @@ class GameManager:
             ry = random.randint(50, MAP_HEIGHT - 50)
             self.resources.append(ResourceNode(rx, ry, "bush", 10, None, "fiber", hp=2, respawn_time=10000, min_level=1))
 
+        for _ in range(NUM_FISHING_SPOTS):
+            rx = random.randint(50, MAP_WIDTH - 50)
+            ry = random.randint(50, MAP_HEIGHT - 50)
+            self.resources.append(ResourceNode(rx, ry, "fishing_spot", 25, "rod", "raw_fish", hp=3, respawn_time=20000, min_level=1))
+
     def _generate_enemies(self):
         for _ in range(NUM_ENEMIES):
             ex = random.randint(50, MAP_WIDTH - 50)
@@ -90,6 +100,7 @@ class GameManager:
         self._generate_resources()
         self.enemies = []
         self._generate_enemies()
+        self.projectiles = []
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
         self.ui = UIManager(self.player)
         self.action_manager = ActionManager(self.ui)
@@ -196,8 +207,9 @@ class GameManager:
                         recipe = recipes[index]
                         success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level, self.recipe_manager)
                         if success:
-                            self.player.skills.gain_xp("crafting", result)
-                            self.ui.show_message(f"{recipe['label']} crafted! (+{result} Crafting XP)")
+                            skill_name = recipe.get("skill", "crafting")
+                            self.player.skills.gain_xp(skill_name, result)
+                            self.ui.show_message(f"{recipe['label']} crafted! (+{result} {skill_name.capitalize()} XP)")
                         else:
                             self.ui.show_message(result)
                 elif action is None and event.type == pygame.MOUSEBUTTONDOWN:
@@ -245,8 +257,9 @@ class GameManager:
                     recipe = recipes[self.ui.crafting_index]
                     success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level, self.recipe_manager)
                     if success:
-                        self.player.skills.gain_xp("crafting", result)
-                        self.ui.show_message(f"{recipe['label']} crafted! (+{result} Crafting XP)")
+                        skill_name = recipe.get("skill", "crafting")
+                        self.player.skills.gain_xp(skill_name, result)
+                        self.ui.show_message(f"{recipe['label']} crafted! (+{result} {skill_name.capitalize()} XP)")
                     else:
                         self.ui.show_message(result)
 
@@ -467,27 +480,45 @@ class GameManager:
                 if self.player.current_action == "gathering" and self.player.action_target:
                     self.action_manager.process_gathering_tick(self.player, self.player.action_target)
                 elif self.player.current_action == "attacking" and self.player.action_target:
-                     enemy = self.player.action_target
-                     if not enemy in self.enemies:
-                          self.player.current_action = None
-                          self.player.action_target = None
-                     else:
-                          # Attack the enemy automatically on tick
-                          attack_rect = self.player.rect.inflate(40, 40)
-                          if attack_rect.colliderect(enemy.rect):
-                               dmg = self.player.get_attack()
-                               enemy.hp -= dmg
-                               self.ui.show_message(f"Hit enemy for {dmg}!")
-                               if enemy.hp <= 0:
-                                    self.enemies.remove(enemy)
-                                    self.resources.append(ResourceItem(enemy.rect.x, enemy.rect.y, "wood"))
-                                    self._on_enemy_defeated_xp()
-                                    self.player.current_action = None
-                                    self.player.action_target = None
-                          else:
-                               # Out of range
-                               self.player.current_action = None
-                               self.player.action_target = None
+                    enemy = self.player.action_target
+                    if enemy not in self.enemies:
+                        self.player.current_action = None
+                        self.player.action_target = None
+                    elif self.player.has_bow():
+                        import math
+                        dx = enemy.rect.centerx - self.player.rect.centerx
+                        dy = enemy.rect.centery - self.player.rect.centery
+                        dist = math.hypot(dx, dy)
+                        if dist <= RANGED_ATTACK_RANGE:
+                            if self.player.inventory.items.get("arrow", 0) > 0:
+                                self.player.inventory.remove_item("arrow", 1)
+                                proj = Projectile(
+                                    self.player.rect.centerx, self.player.rect.centery,
+                                    enemy, self.player.get_ranged_attack()
+                                )
+                                self.projectiles.append(proj)
+                            else:
+                                self.ui.show_message("Out of arrows!")
+                                self.player.current_action = None
+                                self.player.action_target = None
+                        else:
+                            self.player.set_target_destination(enemy.rect.x, enemy.rect.y, target_entity=enemy)
+                    else:
+                        # Melee branch
+                        attack_rect = self.player.rect.inflate(40, 40)
+                        if attack_rect.colliderect(enemy.rect):
+                            dmg = self.player.get_attack()
+                            enemy.hp -= dmg
+                            self.ui.show_message(f"Hit enemy for {dmg}!")
+                            if enemy.hp <= 0:
+                                self.enemies.remove(enemy)
+                                self.resources.append(ResourceItem(enemy.rect.x, enemy.rect.y, "wood"))
+                                self._on_enemy_defeated_xp()
+                                self.player.current_action = None
+                                self.player.action_target = None
+                        else:
+                            self.player.current_action = None
+                            self.player.action_target = None
             
             # Nodes updates (respawn ticks)
             for item in self.resources:
@@ -499,6 +530,24 @@ class GameManager:
                 if enemy.rect.colliderect(self.player.rect):
                     if self.player.take_damage(10):
                         self.ui.show_message("-10 HP!")
+
+            for proj in self.projectiles[:]:
+                proj.update(dt)
+                if proj.hit:
+                    if proj.target in self.enemies:
+                        proj.target.hp -= proj.damage
+                        leveled_up = self.player.skills.gain_xp("ranged", 4)
+                        self.ui.show_message(f"Ranged hit for {proj.damage}!")
+                        if leveled_up:
+                            lvl = self.player.skills.ranged.level
+                            self.ui.show_message(f"Ranged level up! Now level {lvl}")
+                        if proj.target.hp <= 0:
+                            self.enemies.remove(proj.target)
+                            self.resources.append(ResourceItem(proj.target.rect.x, proj.target.rect.y, "wood"))
+                            self._on_enemy_defeated_xp()
+                            self.player.current_action = None
+                            self.player.action_target = None
+                    self.projectiles.remove(proj)
         else:
             if not self.game_over:
                 self.game_over = True
@@ -518,6 +567,8 @@ class GameManager:
             station.draw(self.screen, self.camera)
         for enemy in self.enemies:
             enemy.draw(self.screen, self.camera)
+        for proj in self.projectiles:
+            proj.draw(self.screen, self.camera)
         self.bank.draw(self.screen, self.camera)
         self.player.draw(self.screen, self.camera)
         self.ui.draw(self.screen)

@@ -31,6 +31,8 @@ class ResourceNode:
             self.active_color = (180, 80, 20)
         elif node_type == "bush":
             self.active_color = (34, 139, 34)
+        elif node_type == "fishing_spot":
+            self.active_color = (30, 144, 255)
         else:
             self.active_color = (150, 150, 150)
         self.dead_color = (100, 100, 100)

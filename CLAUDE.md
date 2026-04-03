@@ -49,12 +49,13 @@ while running:
 
 All drawable objects extend `Entity` (base class with sprite/animation support).
 
-- **player.py** — Movement (keyboard + point-and-click), inventory, skills, HP, equipment, attack/defense.
+- **player.py** — Movement (keyboard + point-and-click), inventory, skills, HP, equipment, attack/defense. Equipping a shortbow switches combat to ranged mode (`has_bow()` / `get_ranged_attack()`).
 - **enemy.py** — Simple chase AI within 250px aggro range, HP bar.
-- **resource_node.py** — Gatherable nodes (trees, rocks, iron, bushes) with HP, tool requirements, difficulty, skill level requirements, and respawn timers.
+- **resource_node.py** — Gatherable nodes (trees, rocks, iron, bushes, fishing spots) with HP, tool requirements, difficulty, skill level requirements, and respawn timers.
 - **resource_item.py** — Dropped items on the ground; picked up by clicking or walking nearby.
+- **projectile.py** — Arrow projectiles spawned by the ranged combat tick; travels toward a target enemy each frame, applies damage and Ranged XP on collision.
 - **bank.py** — Static storage vault near spawn.
-- **station.py** — Furnace / Workbench; queued, timed processing of station recipes.
+- **station.py** — Furnace / Workbench / Stove; queued, timed processing of station recipes.
 - **crop.py** — Multi-stage farmable plants (till → plant → harvest).
 
 ### Systems (`src/systems/`)
@@ -71,7 +72,7 @@ Single `UIManager` class renders all HUD and overlay menus (inventory, crafting,
 
 ## Data Files
 
-- **`data/recipes.json`** — All crafting recipes. Each recipe defines: inputs, outputs, min skill level, XP reward, optional station type (`furnace`/`workbench`), and optional duration. Modify here to add crafting without touching code.
+- **`data/recipes.json`** — All crafting recipes. Each recipe defines: inputs, outputs, min skill level, XP reward, optional station type (`furnace`/`workbench`/`stove`), and optional duration. Modify here to add crafting without touching code.
 - **`data/save.json`** — Auto-generated save state. Safe to delete to reset the world.
 
 ## Asset Conventions

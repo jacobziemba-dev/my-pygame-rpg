@@ -26,5 +26,9 @@ NUM_TREES = 15
 NUM_ROCKS = 10
 NUM_IRON_ROCKS = 8
 NUM_BUSHES = 10
+NUM_FISHING_SPOTS = 6
 NUM_CHESTS = 5
+
+# Combat settings
+RANGED_ATTACK_RANGE = 250  # px; used when bow is equipped
 NUM_ENEMIES = 15

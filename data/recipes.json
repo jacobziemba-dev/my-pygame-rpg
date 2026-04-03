@@ -69,6 +69,42 @@
       "outputs": {"rope": 1},
       "min_level": 1,
       "xp": 5
+    },
+    {
+      "name": "fishing_rod",
+      "label": "Fishing Rod",
+      "inputs": {"wood": 3, "rope": 1},
+      "outputs": {"fishing_rod": 1},
+      "min_level": 1,
+      "xp": 5
+    },
+    {
+      "name": "cooked_fish",
+      "label": "Cooked Fish",
+      "inputs": {"raw_fish": 1},
+      "outputs": {"cooked_fish": 1},
+      "min_level": 1,
+      "xp": 10,
+      "station": "stove",
+      "duration": 3000
+    },
+    {
+      "name": "arrow",
+      "label": "Arrow",
+      "inputs": {"wood": 1},
+      "outputs": {"arrow": 10},
+      "min_level": 1,
+      "xp": 5,
+      "skill": "fletching"
+    },
+    {
+      "name": "shortbow",
+      "label": "Shortbow",
+      "inputs": {"wood": 5, "rope": 2},
+      "outputs": {"shortbow": 1},
+      "min_level": 1,
+      "xp": 20,
+      "skill": "fletching"
     }
   ]
 }
