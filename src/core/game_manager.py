@@ -31,11 +31,17 @@ class GameManager:
         self.enemies = []
         self._generate_enemies()
 
-        self.bank = Bank(PLAYER_START_X + 100, PLAYER_START_Y - 50)
-        
+        # Bank is 2×2 tiles; keep stations to the right with tile gaps so rects do not overlap.
+        _hub_bank_x = PLAYER_START_X + 96
+        _hub_bank_y = PLAYER_START_Y - 48
+        self.bank = Bank(_hub_bank_x, _hub_bank_y)
+
+        _station_x = _hub_bank_x + TILE_SIZE * 2 + TILE_SIZE  # one tile gap past bank
         self.stations = []
-        self.stations.append(Station(PLAYER_START_X + 150, PLAYER_START_Y, "furnace", "Furnace"))
-        self.stations.append(Station(PLAYER_START_X + 150, PLAYER_START_Y + 50, "workbench", "Workbench"))
+        self.stations.append(Station(_station_x, _hub_bank_y, "furnace", "Furnace"))
+        self.stations.append(
+            Station(_station_x, _hub_bank_y + TILE_SIZE * 2, "workbench", "Workbench")
+        )
 
         self.crops = []
         self.recipe_manager = RecipeManager()
