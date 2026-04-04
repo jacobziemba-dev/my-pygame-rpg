@@ -33,6 +33,18 @@ class UIManager:
         self.hit_splats = []
         self._splat_duration = 800
 
+        # Hotbar — 9 slots: None | item_name | style_name | "toggle_combat"
+        self.hotbar_slots = [
+            "toggle_combat",  # 1
+            "accurate",       # 2
+            "aggressive",     # 3
+            "defensive",      # 4
+            "rapid",          # 5
+            "longrange",      # 6
+            None, None, None, # 7-9 (assignable)
+        ]
+        self.show_combat_tab = False
+
     def _load_item_sprites(self):
         # We'll try to load sprites for any item that might exist in inventory
         item_types = ["wood", "stone", "sword", "iron_ore", "iron_bar", "iron_sword", 
@@ -86,7 +98,7 @@ class UIManager:
         # Draw Player HP Bar
         hp_bar_width = 200
         hp_bar_height = 20
-        hp_y = surface.get_height() - hp_bar_height - 20
+        hp_y = surface.get_height() - hp_bar_height - 76  # shifted up for hotbar
         hp_x = 20
         fill = (self.player.hp / self.player.max_hp) * hp_bar_width
         
@@ -109,9 +121,12 @@ class UIManager:
         surface.blit(hp_text, (hp_x, hp_y - 20))
 
         # Draw control hints (bottom-right)
-        hints = ["[I] Inventory", "[E] Interact", "[Space] Attack", "[C] Craft", "[Enter] Use/Equip", "[F] Farm", "[K] Skills", "[F5] Save", "[F9] Load"]
+        hints = ["[I] Inventory", "[E] Interact", "[Space] Attack", "[C] Craft",
+                 "[Enter] Use/Equip", "[F] Farm", "[K] Skills",
+                 "[Tab] Combat", "[M] Mode", "[1-9] Hotbar",
+                 "[F5] Save", "[F9] Load"]
         hint_x = surface.get_width() - 140
-        hint_y = surface.get_height() - len(hints) * 18 - 10
+        hint_y = surface.get_height() - len(hints) * 18 - 64  # above hotbar
         for i, hint in enumerate(hints):
             hint_surf = self.font.render(hint, True, (110, 110, 110))
             surface.blit(hint_surf, (hint_x, hint_y + i * 18))
@@ -138,6 +153,10 @@ class UIManager:
             self._draw_bank_inventory(surface)
         if self.active_station:
             self._draw_station_menu(surface)
+
+        self._draw_hotbar(surface)
+        if self.show_combat_tab:
+            self._draw_combat_tab(surface)
 
         # Draw Message
         if self.message:
@@ -568,3 +587,174 @@ class UIManager:
                     label = item[:2].upper()
                 text = self.small_font.render(label, True, (218, 165, 32))
                 surface.blit(text, (x + 5, y + 5))
+
+    def _draw_hotbar_icon(self, surface, slot_val, cx, cy, color):
+        """Draw a small icon for a hotbar slot centered at (cx, cy)."""
+        if slot_val == "toggle_combat":
+            # Sword (melee) or bow (ranged) depending on current mode
+            if self.player.combat_mode == "ranged":
+                # Bow: arc left side + bowstring
+                pygame.draw.arc(surface, color,
+                                (cx - 10, cy - 12, 14, 24), -1.2, 1.2, 2)
+                pygame.draw.line(surface, color, (cx + 2, cy - 11), (cx + 2, cy + 11), 1)
+                # Arrow nocked
+                pygame.draw.line(surface, (200, 200, 160), (cx - 6, cy), (cx + 10, cy), 1)
+                pygame.draw.polygon(surface, (200, 200, 160),
+                                    [(cx + 10, cy), (cx + 6, cy - 3), (cx + 6, cy + 3)])
+            else:
+                # Sword: blade + crossguard + grip
+                pygame.draw.line(surface, color, (cx, cy + 13), (cx, cy - 13), 3)  # blade
+                pygame.draw.line(surface, color, (cx - 7, cy + 2), (cx + 7, cy + 2), 2)  # guard
+                pygame.draw.line(surface, (150, 120, 80), (cx, cy + 3), (cx, cy + 10), 3)  # grip
+
+        elif slot_val == "accurate":
+            # Crosshair / target
+            pygame.draw.circle(surface, color, (cx, cy), 9, 2)
+            pygame.draw.circle(surface, color, (cx, cy), 3, 1)
+            pygame.draw.line(surface, color, (cx - 13, cy), (cx - 5, cy), 1)
+            pygame.draw.line(surface, color, (cx + 5, cy), (cx + 13, cy), 1)
+            pygame.draw.line(surface, color, (cx, cy - 13), (cx, cy - 5), 1)
+            pygame.draw.line(surface, color, (cx, cy + 5), (cx, cy + 13), 1)
+
+        elif slot_val == "aggressive":
+            # Upward sword thrust (power strike feel)
+            pygame.draw.line(surface, color, (cx, cy + 13), (cx, cy - 10), 3)   # blade
+            pygame.draw.polygon(surface, color,
+                                [(cx, cy - 14), (cx - 4, cy - 7), (cx + 4, cy - 7)])  # tip
+            pygame.draw.line(surface, color, (cx - 7, cy + 3), (cx + 7, cy + 3), 2)  # guard
+            pygame.draw.line(surface, (150, 120, 80), (cx, cy + 4), (cx, cy + 11), 3)  # grip
+
+        elif slot_val == "defensive":
+            # Shield shape
+            pts = [
+                (cx,      cy - 13),
+                (cx + 10, cy - 8),
+                (cx + 10, cy + 2),
+                (cx,      cy + 13),
+                (cx - 10, cy + 2),
+                (cx - 10, cy - 8),
+            ]
+            pygame.draw.polygon(surface, color, pts, 2)
+            # Boss (center circle)
+            pygame.draw.circle(surface, color, (cx, cy), 4, 1)
+
+        elif slot_val == "rapid":
+            # Three arrows pointing right (fast volleys)
+            for dy in (-5, 0, 5):
+                sx, sy = cx - 10, cy + dy
+                pygame.draw.line(surface, color, (sx, sy), (sx + 14, sy), 1)
+                pygame.draw.polygon(surface, color,
+                                    [(sx + 14, sy), (sx + 10, sy - 3), (sx + 10, sy + 3)])
+
+        elif slot_val == "longrange":
+            # Bow with long arrow
+            pygame.draw.arc(surface, color,
+                            (cx - 11, cy - 12, 14, 24), -1.2, 1.2, 2)
+            pygame.draw.line(surface, color, (cx + 2, cy - 11), (cx + 2, cy + 11), 1)
+            # Long arrow
+            pygame.draw.line(surface, (200, 200, 160), (cx - 8, cy), (cx + 14, cy), 1)
+            pygame.draw.polygon(surface, (200, 200, 160),
+                                [(cx + 14, cy), (cx + 10, cy - 3), (cx + 10, cy + 3)])
+            # Fletching
+            pygame.draw.line(surface, (200, 180, 100), (cx - 6, cy), (cx - 9, cy - 3), 1)
+            pygame.draw.line(surface, (200, 180, 100), (cx - 6, cy), (cx - 9, cy + 3), 1)
+
+    def _draw_hotbar(self, surface):
+        SLOT = 48
+        PAD  = 4
+        N    = 9
+        total_w = N * SLOT + (N - 1) * PAD
+        hx = (surface.get_width()  - total_w) // 2
+        hy = surface.get_height() - SLOT - 8
+
+        STYLE_COLORS = {
+            "accurate":      (80,  180, 255),
+            "aggressive":    (255, 100,  80),
+            "defensive":     (80,  220, 120),
+            "rapid":         (200, 160,  80),
+            "longrange":     (160,  80, 220),
+            "toggle_combat": (255, 215,   0),
+        }
+
+        for i in range(N):
+            x = hx + i * (SLOT + PAD)
+            slot_val = self.hotbar_slots[i]
+
+            # Highlight currently-active style slot
+            is_active = (slot_val == self.player.combat_style or slot_val == "toggle_combat")
+            bg_color  = (55, 45, 20) if is_active else (30, 30, 30)
+            pygame.draw.rect(surface, bg_color,    (x, hy, SLOT, SLOT))
+            pygame.draw.rect(surface, (90, 80, 50), (x, hy, SLOT, SLOT), 1)
+
+            # Slot number top-left
+            num_surf = self.small_font.render(str(i + 1), True, (130, 130, 130))
+            surface.blit(num_surf, (x + 2, hy + 2))
+
+            if slot_val is None:
+                continue
+
+            cx = x + SLOT // 2
+            cy = hy + SLOT // 2
+
+            if slot_val in STYLE_COLORS:
+                color = STYLE_COLORS[slot_val]
+                self._draw_hotbar_icon(surface, slot_val, cx, cy, color)
+            else:
+                # Item slot — sprite or abbreviation fallback
+                if slot_val in self.item_images:
+                    img_scaled = pygame.transform.scale(self.item_images[slot_val], (32, 32))
+                    surface.blit(img_scaled, (x + 8, hy + 8))
+                    count = self.player.inventory.items.get(slot_val, 0)
+                    if count > 0:
+                        c_surf = self.small_font.render(str(count), True, (255, 255, 255))
+                        surface.blit(c_surf, (x + SLOT - c_surf.get_width() - 2,
+                                              hy + SLOT - c_surf.get_height() - 2))
+                else:
+                    parts = slot_val.split("_")
+                    label = (parts[0][0] + parts[1][0]).upper() if len(parts) > 1 else slot_val[:2].upper()
+                    text_surf = self.font.render(label, True, (200, 200, 200))
+                    surface.blit(text_surf, (cx - text_surf.get_width() // 2,
+                                             cy - text_surf.get_height() // 2))
+
+    def _draw_combat_tab(self, surface):
+        """RS-style combat style selector panel shown above the hotbar."""
+        SLOT = 48
+        N    = 9
+        PAD  = 4
+        total_w = N * SLOT + (N - 1) * PAD
+        panel_w = 240
+        panel_h = 140
+        panel_x = (surface.get_width() - panel_w) // 2
+        panel_y = surface.get_height() - SLOT - 8 - panel_h - 4
+
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel.fill((20, 20, 20, 220))
+        surface.blit(panel, (panel_x, panel_y))
+        pygame.draw.rect(surface, (80, 70, 40), (panel_x, panel_y, panel_w, panel_h), 1)
+
+        mode = self.player.combat_mode
+        title = self.font.render(f"Combat: {mode.capitalize()}  [Tab]", True, (255, 215, 0))
+        surface.blit(title, (panel_x + 8, panel_y + 6))
+
+        toggle_surf = self.small_font.render("[M] Switch Mode", True, (150, 150, 150))
+        surface.blit(toggle_surf, (panel_x + 8, panel_y + 26))
+
+        melee_styles  = [("accurate",   "Accurate   (+ATK xp)"),
+                         ("aggressive", "Aggressive (+STR xp)"),
+                         ("defensive",  "Defensive  (+DEF xp)")]
+        ranged_styles = [("accurate",   "Accurate   (+RNG xp)"),
+                         ("rapid",      "Rapid      (+RNG xp)"),
+                         ("longrange",  "Longrange  (+RNG+DEF)")]
+
+        styles  = melee_styles if mode == "melee" else ranged_styles
+        current = self.player.combat_style
+
+        for i, (sid, label) in enumerate(styles):
+            btn_y     = panel_y + 48 + i * 26
+            is_active = (sid == current)
+            bg        = (60, 55, 15) if is_active else (35, 35, 35)
+            pygame.draw.rect(surface, bg, (panel_x + 8, btn_y, panel_w - 16, 22))
+            color     = (255, 220, 80) if is_active else (180, 180, 180)
+            prefix    = "* " if is_active else "  "
+            btn_surf  = self.small_font.render(prefix + label, True, color)
+            surface.blit(btn_surf, (panel_x + 12, btn_y + 3))

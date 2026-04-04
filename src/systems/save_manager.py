@@ -21,6 +21,8 @@ class SaveManager:
                 "base_attack": getattr(player, 'base_attack', 5),
                 "base_defense": getattr(player, 'base_defense', 0),
                 "equipped_items": getattr(player, 'equipped_items', []),
+                "combat_mode":   getattr(player, 'combat_mode',  "melee"),
+                "combat_style":  getattr(player, 'combat_style', "aggressive"),
                 "inventory": player.inventory.items,
                 "bank_inventory": player.bank_inventory.items,
                 "skills": player.skills.to_dict()
@@ -65,6 +67,9 @@ class SaveManager:
                 } for s in gm.stations
             ]
         
+        if gm and hasattr(gm, 'ui'):
+            data["hotbar"] = gm.ui.hotbar_slots
+
         with open(SAVE_FILE, "w") as f:
             json.dump(data, f)
             
@@ -85,6 +90,8 @@ class SaveManager:
         player.base_attack = p_data.get("base_attack", 5)
         player.base_defense = p_data.get("base_defense", 0)
         player.equipped_items = p_data.get("equipped_items", [])
+        player.combat_mode    = p_data.get("combat_mode",   "melee")
+        player.combat_style   = p_data.get("combat_style",  "aggressive")
         player.inventory.items = p_data.get("inventory", {})
         player.bank_inventory.items = p_data.get("bank_inventory", {})
         player.skills = SkillManager.from_dict(p_data.get("skills", {}))
@@ -140,5 +147,9 @@ class SaveManager:
                         s.output_item = s_data.get("output_item")
                         s.items_to_process = s_data.get("items_to_process", 0)
                         s.processed_items = s_data.get("processed_items", 0)
-            
+
+            if "hotbar" in data and hasattr(gm, 'ui'):
+                loaded = data["hotbar"]
+                gm.ui.hotbar_slots = (loaded + [None] * 9)[:9]
+
         return True

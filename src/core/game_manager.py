@@ -345,6 +345,11 @@ class GameManager:
                     self.ui.show_message(f"Started processing {output_item}...")
             
     def _handle_main_input(self, event):
+        # Hotbar slots 1–9
+        if event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4,
+                         pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9):
+            self._activate_hotbar_slot(event.key - pygame.K_1)
+            return
         if event.key == pygame.K_e:
             self._interact()
         elif event.key == pygame.K_f:
@@ -375,6 +380,12 @@ class GameManager:
                     self.ui.show_message(msg)
                     return
             self.ui.show_message("No usable item in inventory.")
+        elif event.key == pygame.K_TAB:
+            self.ui.show_combat_tab = not self.ui.show_combat_tab
+        elif event.key == pygame.K_m:
+            new_mode = "ranged" if self.player.combat_mode == "melee" else "melee"
+            self.player.set_combat_mode(new_mode)
+            self.ui.show_message(f"Combat mode: {new_mode.capitalize()}")
         elif event.key == pygame.K_F5:
             SaveManager.save_game(self.player, self.resources, self.enemies)
             self.ui.show_message("Game Saved!")
@@ -383,6 +394,23 @@ class GameManager:
                 self.ui.show_message("Game Loaded!")
             else:
                 self.ui.show_message("No Save Found.")
+
+    def _activate_hotbar_slot(self, index):
+        """Activate hotbar slot at 0-based index."""
+        slots = self.ui.hotbar_slots
+        if index >= len(slots) or slots[index] is None:
+            return
+        action = slots[index]
+        if action == "toggle_combat":
+            new_mode = "ranged" if self.player.combat_mode == "melee" else "melee"
+            self.player.set_combat_mode(new_mode)
+            self.ui.show_message(f"Combat mode: {new_mode.capitalize()}")
+        elif action in ("accurate", "aggressive", "defensive", "rapid", "longrange"):
+            self.player.set_combat_style(action)
+            self.ui.show_message(f"Style: {action.capitalize()}")
+        else:
+            success, msg = self.player.use_item(action)
+            self.ui.show_message(msg)
 
     def _interact(self):
         # Check for bank
@@ -453,20 +481,23 @@ class GameManager:
             self.ui.show_message("Need a hoe.")
 
     def _on_enemy_defeated_xp(self):
-        """+20 Attack, +20 Strength, +20 Constitution per kill."""
+        """+20 Constitution always; +20 to combat style's primary/secondary skill per kill."""
         notes = []
-        for sid in ("attack", "strength", "constitution"):
-            if not self.player.skills.gain_xp(sid, 20):
-                continue
-            if sid == "attack":
-                notes.append("Attack level up!")
-            elif sid == "strength":
+        # Constitution always
+        if self.player.skills.gain_xp("constitution", 20):
+            self.player.max_hp += 10
+            self.player.hp = min(self.player.hp + 10, self.player.max_hp)
+            notes.append("Constitution level up! +10 HP")
+        # Style-routed kill bonus
+        primary, secondary = self.player.get_xp_skill_for_hit()
+        if self.player.skills.gain_xp(primary, 20):
+            if primary == "strength":
                 self.player.base_attack += 2
                 notes.append("Strength level up! +2 ATK")
-            elif sid == "constitution":
-                self.player.max_hp += 10
-                self.player.hp = min(self.player.hp + 10, self.player.max_hp)
-                notes.append("Constitution level up! +10 HP")
+            else:
+                notes.append(f"{primary.capitalize()} level up!")
+        if secondary and self.player.skills.gain_xp(secondary, 10):
+            notes.append(f"{secondary.capitalize()} level up!")
         if notes:
             self.ui.show_message("Enemy defeated! " + " ".join(notes))
         else:
@@ -479,7 +510,10 @@ class GameManager:
         for enemy in self.enemies[:]:
             if attack_rect.colliderect(enemy.rect):
                 enemy.hp -= dmg
-                self.player.skills.gain_xp("strength", 5)
+                primary, secondary = self.player.get_xp_skill_for_hit()
+                self.player.skills.gain_xp(primary, 5)
+                if secondary:
+                    self.player.skills.gain_xp(secondary, 2)
                 self.ui.add_hit_splat(dmg, enemy.rect.centerx, enemy.rect.top, self.camera)
                 self.ui.show_message(f"Hit enemy for {dmg}!")
                 if enemy.hp <= 0:
@@ -521,7 +555,7 @@ class GameManager:
                     if enemy not in self.enemies:
                         self.player.current_action = None
                         self.player.action_target = None
-                    elif self.player.has_bow():
+                    elif self.player.combat_mode == "ranged":
                         import math
                         dx = enemy.rect.centerx - self.player.rect.centerx
                         dy = enemy.rect.centery - self.player.rect.centery
@@ -546,7 +580,10 @@ class GameManager:
                         if attack_rect.colliderect(enemy.rect):
                             dmg = self.player.get_attack()
                             enemy.hp -= dmg
-                            self.player.skills.gain_xp("strength", 5)
+                            primary, secondary = self.player.get_xp_skill_for_hit()
+                            self.player.skills.gain_xp(primary, 5)
+                            if secondary:
+                                self.player.skills.gain_xp(secondary, 2)
                             self.ui.add_hit_splat(dmg, enemy.rect.centerx, enemy.rect.top, self.camera)
                             self.ui.show_message(f"Hit enemy for {dmg}!")
                             if enemy.hp <= 0:
@@ -576,12 +613,15 @@ class GameManager:
                 if proj.hit:
                     if proj.target in self.enemies:
                         proj.target.hp -= proj.damage
-                        leveled_up = self.player.skills.gain_xp("ranged", 4)
+                        primary, secondary = self.player.get_xp_skill_for_hit()
+                        leveled_up = self.player.skills.gain_xp(primary, 4)
+                        if secondary:
+                            self.player.skills.gain_xp(secondary, 2)
                         self.ui.add_hit_splat(proj.damage, proj.target.rect.centerx, proj.target.rect.top, self.camera)
                         self.ui.show_message(f"Ranged hit for {proj.damage}!")
                         if leveled_up:
-                            lvl = self.player.skills.ranged.level
-                            self.ui.show_message(f"Ranged level up! Now level {lvl}")
+                            lvl = getattr(self.player.skills, primary).level
+                            self.ui.show_message(f"{primary.capitalize()} level up! Now level {lvl}")
                         if proj.target.hp <= 0:
                             self.enemies.remove(proj.target)
                             self.resources.append(ResourceItem(proj.target.rect.x, proj.target.rect.y, "wood"))

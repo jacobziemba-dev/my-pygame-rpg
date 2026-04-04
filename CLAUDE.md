@@ -49,6 +49,9 @@ Requires `pygame-ce>=2.5.0`. No test suite — all testing is manual by running 
 | I                 | Open inventory                                |
 | K                 | Open skills panel                             |
 | Space             | Attack nearest enemy                          |
+| M                 | Toggle melee / ranged combat mode             |
+| Tab               | Open / close combat style panel               |
+| 1–9               | Activate hotbar slot                          |
 | F5 / F9           | Save / Load                                   |
 | F3                | Toggle FPS display                            |
 
@@ -78,11 +81,11 @@ while running:
 
 All drawable objects extend `Entity` (base class with sprite/animation support).
 
-- **player.py** — Click-to-move with waypoint navigation, keyboard fallback, inventory, skills, HP, equipment, attack/defense. Equipping a shortbow switches to ranged mode (`has_bow()` / `get_ranged_attack()`).
+- **player.py** — Click-to-move with waypoint navigation, keyboard fallback, inventory, skills, HP, equipment, attack/defense. `combat_mode` ("melee"/"ranged") and `combat_style` drive XP routing. `set_combat_mode()`, `set_combat_style()`, `get_xp_skill_for_hit()` are the key methods. `has_bow()` remains a utility check.
 - **enemy.py** — Chase AI within 250px aggro range, HP bar above sprite.
 - **resource_node.py** — Gatherable world objects (trees, rocks, iron_rock, bushes, fishing_spots). Each has: HP (hits to deplete), tool requirement, drop yield, respawn timer, min skill level. Depleted nodes are passable.
 - **resource_item.py** — Items dropped on the ground (from enemies or player drop). Auto-collected on click or nearby walk.
-- **projectile.py** — Arrow projectiles spawned every 1000ms tick when player has a bow equipped. Travels to target, applies damage + Ranged XP on collision.
+- **projectile.py** — Arrow projectiles spawned every 1000ms tick when `player.combat_mode == "ranged"` and a bow is equipped. Travels to target, applies damage + XP (routed via `get_xp_skill_for_hit()`) on collision.
 - **bank.py** — Static 2×2 tile bank near spawn. Opening it shows the bank UI (deposit/withdraw).
 - **station.py** — Furnace, Workbench, Stove. Each station processes recipes with a timer. Stores `pending_recipe` so XP is awarded when the player collects output.
 - **crop.py** — Multi-stage farmable plants. Player tills, plants seeds, waits, harvests.
@@ -109,6 +112,8 @@ Single `UIManager` class. Renders all HUD and menus. Key features:
 - **Station menu** — shown when interacting with furnace/workbench/stove; checks the recipe's actual skill level
 - **Hit splats** — floating red damage numbers over enemies; fade and drift upward over 800ms
 - **Message bar** — centered yellow text at top for action feedback (3-second duration)
+- **Hotbar** — 9 slots bottom-center (48×48px each). Slots hold style shortcuts, `"toggle_combat"`, or item names. Activated by 1–9 keys. Slot 1=TGL, 2=ACC, 3=AGG, 4=DEF, 5=RAP, 6=LNG by default; slots 7–9 empty.
+- **Combat tab** (`Tab`) — small overlay above hotbar showing current mode and style selector with XP hints per style. `[M]` toggles melee/ranged mode.
 - **Control hints** — bottom-right corner key reminders
 
 ---
@@ -157,11 +162,14 @@ Single `UIManager` class. Renders all HUD and menus. Key features:
 |------|----------|
 |Gather resource (tree, rock, ore, fish, bush)|+25 Woodcutting / Mining / Fishing / Hunter|
 |Harvest crop|+20 Farming|
-|Melee hit (auto or Space)|+5 Strength|
-|Enemy kill|+20 Attack, +20 Strength, +20 Constitution|
+|Melee hit (auto or Space) — Accurate style|+5 Attack|
+|Melee hit (auto or Space) — Aggressive style|+5 Strength|
+|Melee hit (auto or Space) — Defensive style|+5 Defense|
+|Enemy kill|+20 Constitution (always) + +20 to active style's primary skill|
 |Strength level-up bonus|+2 base_attack|
 |Constitution level-up bonus|+10 max_hp|
-|Ranged hit (arrow)|+4 Ranged|
+|Ranged hit (arrow) — Accurate/Rapid style|+4 Ranged|
+|Ranged hit (arrow) — Longrange style|+4 Ranged, +2 Defense|
 |Take damage from enemy|+3 Defense|
 |Hand-craft recipe|XP per recipe (see table), goes to recipe's skill|
 |Station collect|XP per recipe × items collected, goes to recipe's skill|
@@ -170,8 +178,10 @@ Single `UIManager` class. Renders all HUD and menus. Key features:
 
 ## Combat System
 
-- **Melee**: 1000ms auto-attack tick when `player.current_action == "attacking"`. Uses `player.rect.inflate(40, 40)` to check contact. Damage = `player.get_attack()` (base + equipment bonus + strength scaling).
-- **Ranged**: If player has shortbow equipped (`has_bow()`), spawns a `Projectile` toward target every 1000ms. Arrows consumed from inventory.
+- **Melee**: 1000ms auto-attack tick when `player.current_action == "attacking"` and `player.combat_mode == "melee"`. Uses `player.rect.inflate(40, 40)` to check contact. Damage = `player.get_attack()`. XP routed via `player.get_xp_skill_for_hit()`.
+- **Ranged**: `player.combat_mode == "ranged"` triggers ranged branch. Spawns a `Projectile` toward target every 1000ms. Requires shortbow equipped + arrows in inventory. XP routed via `get_xp_skill_for_hit()`.
+- **Combat styles**: `player.combat_style` controls XP routing. Melee: `accurate` (Attack XP), `aggressive` (Strength XP), `defensive` (Defense XP). Ranged: `accurate`/`rapid` (Ranged XP), `longrange` (Ranged + Defense XP).
+- **Mode/style switching**: `M` key toggles mode; `Tab` opens style selector panel; hotbar slots 1–6 also switch styles. `player.set_combat_mode()` resets style to mode default.
 - **Enemy AI**: Enemies chase player within 250px. Collide with player rect and deal 10 damage per collision (1-second cooldown on player side).
 - **Hit splats**: Red floating numbers appear above enemies when hit. Fade and drift upward over 800ms.
 - **Defense XP**: Player earns +3 Defense XP each time they successfully take damage.
@@ -192,7 +202,7 @@ Item icons: `assets/sprites/{item_name}.png` (32×32). The UI falls back to a 2-
 
 - **Manager pattern**: `GameManager` creates and holds all systems. Systems receive what they need as arguments — they do not reference each other directly.
 - **Action ticking**: Gathering and combat actions process once per 1000ms tick inside `GameManager.update()`. This is independent of the 60 FPS render loop.
-- **Combat branching**: The 1000ms tick checks `player.has_bow()` — ranged spawns a Projectile, melee uses inflate(40,40) collision.
+- **Combat branching**: The 1000ms tick checks `player.combat_mode` — `"ranged"` spawns a Projectile, `"melee"` uses inflate(40,40) collision. XP always flows through `player.get_xp_skill_for_hit()`. `has_bow()` is a utility check only (used to guard ranged ammo logic).
 - **Data-driven crafting**: All recipes live in `recipes.json`. Add `"skill"` to route XP to the correct skill. Add `"station"` to require a workstation. No code changes needed for new recipes.
 - **Skill-level checks**: Both the UI (display) and the game logic (crafting, gathering) check `recipe.get("skill", "crafting")` to get the right skill level. Do not hardcode `crafting.level` for smithing/cooking/fletching recipes.
 - **Station XP**: When `_handle_station_input` starts processing, it sets `station.pending_recipe = recipe`. When the player collects output (`_interact` or click path in `player.py`), the game awards `recipe["xp"] × collected` to `recipe["skill"]` and clears `pending_recipe`.
@@ -223,6 +233,9 @@ Use this to guide future development. Checked items are implemented.
 - [x] Hit splat damage numbers over enemies
 - [x] Defense XP on taking damage
 - [x] Save / Load world state
+- [x] Combat style system (Accurate/Aggressive/Defensive melee; Accurate/Rapid/Longrange ranged)
+- [x] Hotbar (9 slots, 1–9 keys, default-populated with style shortcuts)
+- [x] Combat tab panel (Tab key) showing mode + style selector with XP hints
 
 ### Next Priority Features
 

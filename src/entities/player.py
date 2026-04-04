@@ -22,6 +22,8 @@ class Player(Entity):
         self.base_attack = 5
         self.base_defense = 0
         self.equipped_items = []
+        self.combat_mode  = "melee"       # "melee" | "ranged"
+        self.combat_style = "aggressive"  # melee: accurate/aggressive/defensive | ranged: accurate/rapid/longrange
         
         self.current_action = None
         self.action_target = None
@@ -282,6 +284,34 @@ class Player(Entity):
 
     def has_bow(self):
         return "shortbow" in self.equipped_items
+
+    def set_combat_mode(self, mode):
+        if mode == "melee":
+            self.combat_mode, self.combat_style = "melee", "aggressive"
+        elif mode == "ranged":
+            self.combat_mode, self.combat_style = "ranged", "rapid"
+
+    def set_combat_style(self, style):
+        melee_styles  = {"accurate", "aggressive", "defensive"}
+        ranged_styles = {"accurate", "rapid", "longrange"}
+        valid = melee_styles if self.combat_mode == "melee" else ranged_styles
+        if style in valid:
+            self.combat_style = style
+
+    def get_xp_skill_for_hit(self):
+        """Returns (primary_skill, secondary_skill_or_None) based on current mode+style."""
+        if self.combat_mode == "melee":
+            return {
+                "accurate":   ("attack",   None),
+                "aggressive": ("strength", None),
+                "defensive":  ("defense",  None),
+            }.get(self.combat_style, ("strength", None))
+        else:
+            return {
+                "accurate":  ("ranged", None),
+                "rapid":     ("ranged", None),
+                "longrange": ("ranged", "defense"),
+            }.get(self.combat_style, ("ranged", None))
 
     def use_item(self, item_name):
         if self.inventory.items.get(item_name, 0) > 0:
