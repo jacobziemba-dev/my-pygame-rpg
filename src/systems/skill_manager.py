@@ -53,7 +53,7 @@ class Skill:
         self.xp = 0
 
     def xp_threshold(self):
-        return self.level * 50
+        return self.level * self.level * 30
 
     def gain_xp(self, amount):
         self.xp += amount

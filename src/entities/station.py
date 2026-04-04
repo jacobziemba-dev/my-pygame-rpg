@@ -16,6 +16,8 @@ class Station:
         self.items_to_process = 0
         self.processed_items = 0
         
+        self.pending_recipe = None  # set when processing starts; used to award XP on collect
+
         self.color = (150, 150, 150)
         if self.station_type == "furnace":
             self.color = (80, 40, 20)

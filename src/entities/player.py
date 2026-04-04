@@ -151,7 +151,19 @@ class Player(Entity):
                              collected = station.collect(self)
                              if hasattr(self.game_manager, 'ui'):
                                  if collected > 0:
-                                     self.game_manager.ui.show_message(f"Collected {collected} items!")
+                                     if station.pending_recipe:
+                                         recipe = station.pending_recipe
+                                         skill_name = recipe.get("skill", "crafting")
+                                         xp_total = recipe["xp"] * collected
+                                         leveled_up = self.skills.gain_xp(skill_name, xp_total)
+                                         msg = f"Collected {collected} items! (+{xp_total} {skill_name.capitalize()} XP)"
+                                         if leveled_up:
+                                             lvl = getattr(self.skills, skill_name).level
+                                             msg += f" — {skill_name.capitalize()} Lv.{lvl}!"
+                                         self.game_manager.ui.show_message(msg)
+                                         station.pending_recipe = None
+                                     else:
+                                         self.game_manager.ui.show_message(f"Collected {collected} items!")
                                  else:
                                      self.game_manager.ui.active_station = station
                                      self.game_manager.ui.station_index = 0

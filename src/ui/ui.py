@@ -29,6 +29,10 @@ class UIManager:
         self.item_images = {}
         self._load_item_sprites()
 
+        # Floating hit splats: list of [text, screen_x, screen_y, spawn_time_ms]
+        self.hit_splats = []
+        self._splat_duration = 800
+
     def _load_item_sprites(self):
         # We'll try to load sprites for any item that might exist in inventory
         item_types = ["wood", "stone", "sword", "iron_ore", "iron_bar", "iron_sword", 
@@ -48,6 +52,12 @@ class UIManager:
                 except:
                     pass
 
+    def add_hit_splat(self, damage, world_x, world_y, camera):
+        """Spawn a floating damage number above a hit position."""
+        screen_x = world_x - (camera.camera_rect.x if camera else 0)
+        screen_y = world_y - (camera.camera_rect.y if camera else 0)
+        self.hit_splats.append([str(damage), screen_x, screen_y, pygame.time.get_ticks()])
+
     def show_message(self, text):
         self.message = text
         self.message_timer = pygame.time.get_ticks()
@@ -63,12 +73,14 @@ class UIManager:
         h = 0
         for _, _, skills in self.player.skills.skills_by_category():
             h += 22
-            h += len(skills) * 20
+            h += len(skills) * 26
         return h
 
     def update(self):
         if self.message and pygame.time.get_ticks() - self.message_timer > self.message_duration:
             self.message = ""
+        now = pygame.time.get_ticks()
+        self.hit_splats = [s for s in self.hit_splats if now - s[3] < self._splat_duration]
 
     def draw(self, surface):
         # Draw Player HP Bar
@@ -103,6 +115,17 @@ class UIManager:
         for i, hint in enumerate(hints):
             hint_surf = self.font.render(hint, True, (110, 110, 110))
             surface.blit(hint_surf, (hint_x, hint_y + i * 18))
+
+        # Draw floating hit splats
+        now = pygame.time.get_ticks()
+        for text, sx, sy, spawn in self.hit_splats:
+            age = now - spawn
+            progress = age / self._splat_duration
+            offset_y = int(progress * 30)  # float upward 30px over lifetime
+            alpha = max(0, int(255 * (1.0 - progress)))
+            splat_surf = self.font.render(text, True, (255, 50, 50))
+            splat_surf.set_alpha(alpha)
+            surface.blit(splat_surf, (int(sx) - splat_surf.get_width() // 2, int(sy) - 20 - offset_y))
 
         # Draw overlays
         if self.show_inventory:
@@ -302,8 +325,6 @@ class UIManager:
         surface.blit(controls, (panel_x + 10, panel_y + 28))
         pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + 48), (panel_x + panel_w, panel_y + 48))
 
-        crafting_level = self.player.skills.crafting.level
-
         # Filter out station recipes
         recipes = self.recipe_manager.get_handcrafted()
 
@@ -313,14 +334,21 @@ class UIManager:
             row_y = list_top + i * 22
             if row_y > panel_y + panel_h - 86:
                 break
-            can_level = crafting_level >= recipe["min_level"]
+            skill_name = recipe.get("skill", "crafting")
+            skill_level = getattr(self.player.skills, skill_name, self.player.skills.crafting).level
+            can_level = skill_level >= recipe["min_level"]
             can_items = all(self.player.inventory.items.get(k, 0) >= v for k, v in recipe["inputs"].items())
 
             if i == self.crafting_index:
                 pygame.draw.rect(surface, (60, 55, 15), (panel_x + 4, row_y - 2, panel_w - 8, 20))
 
             name_color = (220, 220, 220) if can_level else (90, 90, 90)
-            status = "✓" if (can_level and can_items) else ("✗ Lv." + str(recipe["min_level"]) if not can_level else "✗ items")
+            if not can_level:
+                status = f"✗ {skill_name.capitalize()} Lv.{recipe['min_level']}"
+            elif not can_items:
+                status = "✗ items"
+            else:
+                status = "✓"
             status_color = (80, 200, 80) if (can_level and can_items) else (200, 80, 80)
 
             label = f"{'>' if i == self.crafting_index else ' '} {recipe['label']}"
@@ -332,11 +360,12 @@ class UIManager:
         pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + panel_h - 76), (panel_x + panel_w, panel_y + panel_h - 76))
         if 0 <= self.crafting_index < len(recipes):
             r = recipes[self.crafting_index]
+            r_skill = r.get("skill", "crafting").capitalize()
             inputs_str = ",  ".join(f"{v}x {k.replace('_', ' ')}" for k, v in r["inputs"].items())
             outputs_str = ",  ".join(f"{v}x {k.replace('_', ' ')}" for k, v in r["outputs"].items())
             surface.blit(self.font.render(f"In:  {inputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 70))
             surface.blit(self.font.render(f"Out: {outputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 48))
-            surface.blit(self.font.render(f"XP:  +{r['xp']} Crafting", True, (160, 210, 160)), (panel_x + 10, panel_y + panel_h - 26))
+            surface.blit(self.font.render(f"XP:  +{r['xp']} {r_skill}", True, (160, 210, 160)), (panel_x + 10, panel_y + panel_h - 26))
 
     def _draw_skills_panel(self, surface):
         panel_w = 320
@@ -368,10 +397,17 @@ class UIManager:
             y += 22
             for skill in skills:
                 label = f"  {skill.name}  Lv.{skill.level}  {skill.xp}/{skill.xp_threshold()} XP"
-                if y + 20 > content_top and y < content_top + clip_h:
+                if y + 26 > content_top and y < content_top + clip_h:
                     text_surf = self.small_font.render(label, True, (220, 220, 220))
                     surface.blit(text_surf, (panel_x + 10, y))
-                y += 20
+                    # XP progress bar
+                    bar_w = 100
+                    thresh = skill.xp_threshold()
+                    fill_w = int(bar_w * (skill.xp / thresh)) if thresh > 0 else 0
+                    pygame.draw.rect(surface, (60, 50, 20), (panel_x + 10, y + 14, bar_w, 4))
+                    if fill_w > 0:
+                        pygame.draw.rect(surface, (200, 160, 40), (panel_x + 10, y + 14, fill_w, 4))
+                y += 26
 
         if max_scroll > 0:
             sb_x = panel_x + panel_w - 8

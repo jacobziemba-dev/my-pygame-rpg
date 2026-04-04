@@ -69,8 +69,8 @@ class ActionManager:
                 player.inventory.add_item("wheat_seeds", 1)
                 self.ui.show_message("Found some wheat seeds!")
 
-            leveled_up = player.skills.gain_xp(skill_name, 5)
-            self.ui.show_message(f"Gained 1 {node.yields}! (+5 {skill_name.capitalize()} XP)")
+            leveled_up = player.skills.gain_xp(skill_name, 25)
+            self.ui.show_message(f"Gained 1 {node.yields}! (+25 {skill_name.capitalize()} XP)")
             if leveled_up:
                 new_level = getattr(player.skills, skill_name).level
                 self.ui.show_message(f"{skill_name.capitalize()} level up! Now level {new_level}")

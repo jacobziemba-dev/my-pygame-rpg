@@ -15,6 +15,7 @@
       "outputs": {"iron_bar": 1},
       "min_level": 3,
       "xp": 15,
+      "skill": "smithing",
       "station": "furnace",
       "duration": 2000
     },
@@ -25,6 +26,7 @@
       "outputs": {"iron_sword": 1},
       "min_level": 5,
       "xp": 25,
+      "skill": "smithing",
       "station": "workbench"
     },
     {
@@ -34,6 +36,7 @@
       "outputs": {"iron_axe": 1},
       "min_level": 5,
       "xp": 20,
+      "skill": "smithing",
       "station": "workbench"
     },
     {
@@ -43,6 +46,7 @@
       "outputs": {"iron_pickaxe": 1},
       "min_level": 5,
       "xp": 20,
+      "skill": "smithing",
       "station": "workbench"
     },
     {
@@ -51,7 +55,8 @@
       "inputs": {"wheat": 3},
       "outputs": {"bread": 1},
       "min_level": 1,
-      "xp": 10
+      "xp": 10,
+      "skill": "cooking"
     },
     {
       "name": "iron_armor",
@@ -60,6 +65,7 @@
       "outputs": {"iron_armor": 1},
       "min_level": 7,
       "xp": 50,
+      "skill": "smithing",
       "station": "workbench"
     },
     {
@@ -85,6 +91,7 @@
       "outputs": {"cooked_fish": 1},
       "min_level": 1,
       "xp": 10,
+      "skill": "cooking",
       "station": "stove",
       "duration": 3000
     },

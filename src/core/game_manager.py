@@ -212,9 +212,10 @@ class GameManager:
                     recipes = self.recipe_manager.get_handcrafted()
                     if 0 <= index < len(recipes):
                         recipe = recipes[index]
-                        success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level, self.recipe_manager)
+                        skill_name = recipe.get("skill", "crafting")
+                        skill_level = getattr(self.player.skills, skill_name, self.player.skills.crafting).level
+                        success, result = self.player.inventory.craft(recipe["name"], skill_level, self.recipe_manager)
                         if success:
-                            skill_name = recipe.get("skill", "crafting")
                             self.player.skills.gain_xp(skill_name, result)
                             self.ui.show_message(f"{recipe['label']} crafted! (+{result} {skill_name.capitalize()} XP)")
                         else:
@@ -262,9 +263,10 @@ class GameManager:
             elif event.key == pygame.K_RETURN:
                 if 0 <= self.ui.crafting_index < len(recipes):
                     recipe = recipes[self.ui.crafting_index]
-                    success, result = self.player.inventory.craft(recipe["name"], self.player.skills.crafting.level, self.recipe_manager)
+                    skill_name = recipe.get("skill", "crafting")
+                    skill_level = getattr(self.player.skills, skill_name, self.player.skills.crafting).level
+                    success, result = self.player.inventory.craft(recipe["name"], skill_level, self.recipe_manager)
                     if success:
-                        skill_name = recipe.get("skill", "crafting")
                         self.player.skills.gain_xp(skill_name, result)
                         self.ui.show_message(f"{recipe['label']} crafted! (+{result} {skill_name.capitalize()} XP)")
                     else:
@@ -325,17 +327,20 @@ class GameManager:
                         can_craft = False
                         break
                 
-                # Check min level
-                if self.player.skills.crafting.level < recipe["min_level"]:
-                    self.ui.show_message(f"Requires Crafting Lv.{recipe['min_level']}.")
+                # Check min level against the recipe's actual skill
+                recipe_skill = recipe.get("skill", "crafting")
+                recipe_skill_level = getattr(self.player.skills, recipe_skill, self.player.skills.crafting).level
+                if recipe_skill_level < recipe["min_level"]:
+                    self.ui.show_message(f"Requires {recipe_skill.capitalize()} Lv.{recipe['min_level']}.")
                     can_craft = False
 
                 if can_craft:
                     for item, amount in recipe["inputs"].items():
                         self.player.inventory.remove_item(item, amount)
-                    
+
                     output_item = list(recipe["outputs"].keys())[0]
                     duration = recipe.get("duration", 2000)
+                    station.pending_recipe = recipe
                     station.start_processing(list(recipe["inputs"].keys())[0], output_item, 1, duration)
                     self.ui.show_message(f"Started processing {output_item}...")
             
@@ -391,7 +396,19 @@ class GameManager:
             if self.player.rect.inflate(10, 10).colliderect(station.rect):
                 collected = station.collect(self.player)
                 if collected > 0:
-                    self.ui.show_message(f"Collected {collected} items!")
+                    if station.pending_recipe:
+                        recipe = station.pending_recipe
+                        skill_name = recipe.get("skill", "crafting")
+                        xp_total = recipe["xp"] * collected
+                        leveled_up = self.player.skills.gain_xp(skill_name, xp_total)
+                        msg = f"Collected {collected} items! (+{xp_total} {skill_name.capitalize()} XP)"
+                        if leveled_up:
+                            lvl = getattr(self.player.skills, skill_name).level
+                            msg += f" — {skill_name.capitalize()} Lv.{lvl}!"
+                        self.ui.show_message(msg)
+                        station.pending_recipe = None
+                    else:
+                        self.ui.show_message(f"Collected {collected} items!")
                 else:
                     self.ui.active_station = station
                     self.ui.station_index = 0
@@ -436,10 +453,10 @@ class GameManager:
             self.ui.show_message("Need a hoe.")
 
     def _on_enemy_defeated_xp(self):
-        """+5 Attack, +5 Strength, +5 Constitution per kill (issue #19)."""
+        """+20 Attack, +20 Strength, +20 Constitution per kill."""
         notes = []
         for sid in ("attack", "strength", "constitution"):
-            if not self.player.skills.gain_xp(sid, 5):
+            if not self.player.skills.gain_xp(sid, 20):
                 continue
             if sid == "attack":
                 notes.append("Attack level up!")
@@ -462,6 +479,8 @@ class GameManager:
         for enemy in self.enemies[:]:
             if attack_rect.colliderect(enemy.rect):
                 enemy.hp -= dmg
+                self.player.skills.gain_xp("strength", 5)
+                self.ui.add_hit_splat(dmg, enemy.rect.centerx, enemy.rect.top, self.camera)
                 self.ui.show_message(f"Hit enemy for {dmg}!")
                 if enemy.hp <= 0:
                     self.enemies.remove(enemy)
@@ -527,6 +546,8 @@ class GameManager:
                         if attack_rect.colliderect(enemy.rect):
                             dmg = self.player.get_attack()
                             enemy.hp -= dmg
+                            self.player.skills.gain_xp("strength", 5)
+                            self.ui.add_hit_splat(dmg, enemy.rect.centerx, enemy.rect.top, self.camera)
                             self.ui.show_message(f"Hit enemy for {dmg}!")
                             if enemy.hp <= 0:
                                 self.enemies.remove(enemy)
@@ -547,6 +568,7 @@ class GameManager:
                 enemy.update(self.player, dt, obstacles + [self.player.rect])
                 if enemy.rect.inflate(4, 4).colliderect(self.player.rect):
                     if self.player.take_damage(10):
+                        self.player.skills.gain_xp("defense", 3)
                         self.ui.show_message("-10 HP!")
 
             for proj in self.projectiles[:]:
@@ -555,6 +577,7 @@ class GameManager:
                     if proj.target in self.enemies:
                         proj.target.hp -= proj.damage
                         leveled_up = self.player.skills.gain_xp("ranged", 4)
+                        self.ui.add_hit_splat(proj.damage, proj.target.rect.centerx, proj.target.rect.top, self.camera)
                         self.ui.show_message(f"Ranged hit for {proj.damage}!")
                         if leveled_up:
                             lvl = self.player.skills.ranged.level
