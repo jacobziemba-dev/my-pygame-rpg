@@ -90,8 +90,11 @@ class SaveManager:
         player.base_attack = p_data.get("base_attack", 5)
         player.base_defense = p_data.get("base_defense", 0)
         player.equipped_items = p_data.get("equipped_items", [])
-        player.combat_mode    = p_data.get("combat_mode",   "melee")
-        player.combat_style   = p_data.get("combat_style",  "aggressive")
+        # Auto-detect ranged mode for old saves that didn't save combat_mode
+        default_mode = "ranged" if "shortbow" in player.equipped_items else "melee"
+        player.combat_mode  = p_data.get("combat_mode",  default_mode)
+        default_style = "rapid" if player.combat_mode == "ranged" else "aggressive"
+        player.combat_style = p_data.get("combat_style", default_style)
         player.inventory.items = p_data.get("inventory", {})
         player.bank_inventory.items = p_data.get("bank_inventory", {})
         player.skills = SkillManager.from_dict(p_data.get("skills", {}))

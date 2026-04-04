@@ -326,8 +326,10 @@ class Player(Entity):
             # For gear, equip it
             if item_name in ["sword", "iron_sword", "iron_armor", "shortbow"]:
                 if item_name not in self.equipped_items:
-                    # Unequip similar type? (simple version: just add)
                     self.inventory.remove_item(item_name, 1)
                     self.equipped_items.append(item_name)
+                    if item_name == "shortbow":
+                        self.combat_mode  = "ranged"
+                        self.combat_style = "rapid"
                     return True, f"Equipped {item_name.replace('_', ' ').title()}!"
         return False, "Cannot use this item."

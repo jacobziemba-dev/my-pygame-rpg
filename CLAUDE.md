@@ -178,8 +178,11 @@ Single `UIManager` class. Renders all HUD and menus. Key features:
 
 ## Combat System
 
-- **Melee**: 1000ms auto-attack tick when `player.current_action == "attacking"` and `player.combat_mode == "melee"`. Uses `player.rect.inflate(40, 40)` to check contact. Damage = `player.get_attack()`. XP routed via `player.get_xp_skill_for_hit()`.
-- **Ranged**: `player.combat_mode == "ranged"` triggers ranged branch. Spawns a `Projectile` toward target every 1000ms. Requires shortbow equipped + arrows in inventory. XP routed via `get_xp_skill_for_hit()`.
+- **Melee**: 1000ms auto-attack tick when `player.current_action == "attacking"` and combat falls to the melee branch. Uses `player.rect.inflate(80, 80)` (~56px reach) to check contact. Damage = `player.get_attack()`. XP routed via `player.get_xp_skill_for_hit()`.
+- **Ranged**: Fires when `player.combat_mode == "ranged"` **AND** `player.has_bow()`. Spawns a `Projectile` toward target every 1000ms within `RANGED_ATTACK_RANGE = 250px`. Requires arrows in inventory. XP routed via `get_xp_skill_for_hit()`.
+- **Combat branching**: Ranged requires BOTH `combat_mode == "ranged"` and `has_bow()`. If either is false, combat falls through to melee. Equipping a shortbow auto-sets `combat_mode = "ranged"`. Loading a save with shortbow equipped auto-detects ranged mode for backwards compatibility.
+- **Out-of-range chasing**: If enemy is out of melee or ranged reach during the tick, the player's `target_destination` is updated directly (without calling `set_target_destination`) so `current_action` stays `"attacking"` and the player chases the enemy without losing attack state.
+- **Space bar**: Instant-hits nearest enemy if within `inflate(80,80)` range, then sets up the auto-attack loop via `set_target_destination`. If out of range, pathfinds to the enemy to begin the loop.
 - **Combat styles**: `player.combat_style` controls XP routing. Melee: `accurate` (Attack XP), `aggressive` (Strength XP), `defensive` (Defense XP). Ranged: `accurate`/`rapid` (Ranged XP), `longrange` (Ranged + Defense XP).
 - **Mode/style switching**: `M` key toggles mode; `Tab` opens style selector panel; hotbar slots 1–6 also switch styles. `player.set_combat_mode()` resets style to mode default.
 - **Enemy AI**: Enemies chase player within 250px. Collide with player rect and deal 10 damage per collision (1-second cooldown on player side).
@@ -202,7 +205,7 @@ Item icons: `assets/sprites/{item_name}.png` (32×32). The UI falls back to a 2-
 
 - **Manager pattern**: `GameManager` creates and holds all systems. Systems receive what they need as arguments — they do not reference each other directly.
 - **Action ticking**: Gathering and combat actions process once per 1000ms tick inside `GameManager.update()`. This is independent of the 60 FPS render loop.
-- **Combat branching**: The 1000ms tick checks `player.combat_mode` — `"ranged"` spawns a Projectile, `"melee"` uses inflate(40,40) collision. XP always flows through `player.get_xp_skill_for_hit()`. `has_bow()` is a utility check only (used to guard ranged ammo logic).
+- **Combat branching**: The 1000ms tick checks `combat_mode == "ranged" and has_bow()` for ranged (spawns Projectile), else melee (inflate(80,80) collision). XP always flows through `player.get_xp_skill_for_hit()`. Out-of-range: directly set `player.target_destination` (not `set_target_destination`) to chase without clearing `current_action`.
 - **Data-driven crafting**: All recipes live in `recipes.json`. Add `"skill"` to route XP to the correct skill. Add `"station"` to require a workstation. No code changes needed for new recipes.
 - **Skill-level checks**: Both the UI (display) and the game logic (crafting, gathering) check `recipe.get("skill", "crafting")` to get the right skill level. Do not hardcode `crafting.level` for smithing/cooking/fletching recipes.
 - **Station XP**: When `_handle_station_input` starts processing, it sets `station.pending_recipe = recipe`. When the player collects output (`_interact` or click path in `player.py`), the game awards `recipe["xp"] × collected` to `recipe["skill"]` and clears `pending_recipe`.

@@ -504,23 +504,34 @@ class GameManager:
             self.ui.show_message("Enemy defeated!")
 
     def _attack(self):
+        """Space: instant-hit nearest enemy if adjacent, else pathfind to it."""
         if self.player.hp <= 0: return
-        attack_rect = self.player.rect.inflate(40, 40)
-        dmg = self.player.get_attack()
-        for enemy in self.enemies[:]:
-            if attack_rect.colliderect(enemy.rect):
-                enemy.hp -= dmg
-                primary, secondary = self.player.get_xp_skill_for_hit()
-                self.player.skills.gain_xp(primary, 5)
-                if secondary:
-                    self.player.skills.gain_xp(secondary, 2)
-                self.ui.add_hit_splat(dmg, enemy.rect.centerx, enemy.rect.top, self.camera)
-                self.ui.show_message(f"Hit enemy for {dmg}!")
-                if enemy.hp <= 0:
-                    self.enemies.remove(enemy)
-                    self.resources.append(ResourceItem(enemy.rect.x, enemy.rect.y, "wood"))
-                    self._on_enemy_defeated_xp()
+        if not self.enemies:
+            self.ui.show_message("No enemies nearby.")
+            return
+        import math
+        nearest = min(self.enemies,
+                      key=lambda e: math.hypot(e.rect.centerx - self.player.rect.centerx,
+                                               e.rect.centery - self.player.rect.centery))
+        attack_rect = self.player.rect.inflate(80, 80)
+        if attack_rect.colliderect(nearest.rect):
+            # Immediate hit
+            dmg = self.player.get_attack()
+            nearest.hp -= dmg
+            primary, secondary = self.player.get_xp_skill_for_hit()
+            self.player.skills.gain_xp(primary, 5)
+            if secondary:
+                self.player.skills.gain_xp(secondary, 2)
+            self.ui.add_hit_splat(dmg, nearest.rect.centerx, nearest.rect.top, self.camera)
+            self.ui.show_message(f"Hit enemy for {dmg}!")
+            if nearest.hp <= 0:
+                self.enemies.remove(nearest)
+                self.resources.append(ResourceItem(nearest.rect.x, nearest.rect.y, "wood"))
+                self._on_enemy_defeated_xp()
                 return
+        # Set up auto-attack loop toward nearest enemy
+        self.player.set_target_destination(
+            nearest.rect.centerx, nearest.rect.centery, target_entity=nearest)
 
     def _get_solid_obstacles(self):
         obstacles = []
@@ -555,7 +566,7 @@ class GameManager:
                     if enemy not in self.enemies:
                         self.player.current_action = None
                         self.player.action_target = None
-                    elif self.player.combat_mode == "ranged":
+                    elif self.player.combat_mode == "ranged" and self.player.has_bow():
                         import math
                         dx = enemy.rect.centerx - self.player.rect.centerx
                         dy = enemy.rect.centery - self.player.rect.centery
@@ -573,10 +584,12 @@ class GameManager:
                                 self.player.current_action = None
                                 self.player.action_target = None
                         else:
-                            self.player.set_target_destination(enemy.rect.x, enemy.rect.y, target_entity=enemy)
+                            # Move closer — keep attack state so next tick re-evaluates
+                            self.player.target_destination = (enemy.rect.centerx, enemy.rect.centery)
+                            self.player.waypoints = []
                     else:
                         # Melee branch
-                        attack_rect = self.player.rect.inflate(40, 40)
+                        attack_rect = self.player.rect.inflate(80, 80)
                         if attack_rect.colliderect(enemy.rect):
                             dmg = self.player.get_attack()
                             enemy.hp -= dmg
@@ -593,9 +606,10 @@ class GameManager:
                                 self.player.current_action = None
                                 self.player.action_target = None
                         else:
-                            self.player.current_action = None
-                            self.player.action_target = None
-            
+                            # Enemy moved — keep attack state and chase them
+                            self.player.target_destination = (enemy.rect.centerx, enemy.rect.centery)
+                            self.player.waypoints = []
+
             # Nodes updates (respawn ticks)
             for item in self.resources:
                 if isinstance(item, ResourceNode):
