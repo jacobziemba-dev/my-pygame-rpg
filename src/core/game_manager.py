@@ -55,7 +55,7 @@ class GameManager:
 
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
         self.ui = UIManager(self.player)
-        self.action_manager = ActionManager(self.ui)
+        self.action_manager = ActionManager(self.ui, self.camera)
         self.last_tick = pygame.time.get_ticks()
         self._last_frame_ms = 0.0
         self.show_fps_overlay = True  # F3 toggles; issue #10 dev diagnostics
@@ -107,8 +107,20 @@ class GameManager:
         self.respawn_queue = []
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
         self.ui = UIManager(self.player)
-        self.action_manager = ActionManager(self.ui)
+        self.action_manager = ActionManager(self.ui, self.camera)
         self.last_tick = pygame.time.get_ticks()
+
+    def _award_xp(self, skill_name, amount, world_x=None, world_y=None):
+        """Award XP and spawn a floating XP drop near the provided world position."""
+        if amount <= 0:
+            return False
+        leveled_up = self.player.skills.gain_xp(skill_name, amount)
+        if world_x is None:
+            world_x = self.player.rect.centerx
+        if world_y is None:
+            world_y = self.player.rect.top
+        self.ui.add_xp_drop(skill_name, amount, world_x, world_y, self.camera)
+        return leveled_up
 
     def run(self):
         while self.running:
@@ -364,7 +376,7 @@ class GameManager:
                         skill_level = getattr(self.player.skills, skill_name, self.player.skills.crafting).level
                         success, result = self.player.inventory.craft(recipe["name"], skill_level, self.recipe_manager)
                         if success:
-                            self.player.skills.gain_xp(skill_name, result)
+                            self._award_xp(skill_name, result)
                             self.ui.show_message(f"{recipe['label']} crafted! (+{result} {skill_name.capitalize()} XP)")
                         else:
                             self.ui.show_message(result)
@@ -424,7 +436,7 @@ class GameManager:
                     skill_level = getattr(self.player.skills, skill_name, self.player.skills.crafting).level
                     success, result = self.player.inventory.craft(recipe["name"], skill_level, self.recipe_manager)
                     if success:
-                        self.player.skills.gain_xp(skill_name, result)
+                        self._award_xp(skill_name, result)
                         self.ui.show_message(f"{recipe['label']} crafted! (+{result} {skill_name.capitalize()} XP)")
                     else:
                         self.ui.show_message(result)
@@ -582,7 +594,7 @@ class GameManager:
                         recipe = station.pending_recipe
                         skill_name = recipe.get("skill", "crafting")
                         xp_total = recipe["xp"] * collected
-                        leveled_up = self.player.skills.gain_xp(skill_name, xp_total)
+                        leveled_up = self._award_xp(skill_name, xp_total, self.player.rect.centerx, self.player.rect.top)
                         msg = f"Collected {collected} items! (+{xp_total} {skill_name.capitalize()} XP)"
                         if leveled_up:
                             lvl = getattr(self.player.skills, skill_name).level
@@ -623,7 +635,7 @@ class GameManager:
                     self.ui.show_message("Your inventory is full.")
                     return
                 self.crops.remove(target_crop)
-                if self.player.skills.gain_xp("farming", 20):
+                if self._award_xp("farming", 20, self.player.rect.centerx, self.player.rect.top):
                     self.ui.show_message("Farming Level UP!")
                 self.ui.show_message(f"Harvested {target_crop.crop_type}!")
             else:
@@ -681,19 +693,19 @@ class GameManager:
         con_xp = max(1, enemy.xp_reward // 3)
         combat_xp = enemy.xp_reward
 
-        if self.player.skills.gain_xp("constitution", con_xp):
+        if self._award_xp("constitution", con_xp, enemy.rect.centerx, enemy.rect.top):
             self.player.max_hp += 10
             self.player.hp = min(self.player.hp + 10, self.player.max_hp)
             notes.append("Constitution level up! +10 HP")
 
         primary, secondary = self.player.get_xp_skill_for_hit()
-        if self.player.skills.gain_xp(primary, combat_xp):
+        if self._award_xp(primary, combat_xp, enemy.rect.centerx, enemy.rect.top):
             if primary == "strength":
                 self.player.base_attack += 2
                 notes.append("Strength level up! +2 ATK")
             else:
                 notes.append(f"{primary.capitalize()} level up!")
-        if secondary and self.player.skills.gain_xp(secondary, combat_xp // 2):
+        if secondary and self._award_xp(secondary, combat_xp // 2, enemy.rect.centerx, enemy.rect.top):
             notes.append(f"{secondary.capitalize()} level up!")
 
         base_msg = f"{enemy.name} defeated! (+{combat_xp} XP)"
@@ -717,9 +729,9 @@ class GameManager:
             if is_hit:
                 nearest.hp -= dmg
                 primary, secondary = self.player.get_xp_skill_for_hit()
-                self.player.skills.gain_xp(primary, 5)
+                self._award_xp(primary, 5, self.player.rect.centerx, self.player.rect.top)
                 if secondary:
-                    self.player.skills.gain_xp(secondary, 2)
+                    self._award_xp(secondary, 2, self.player.rect.centerx, self.player.rect.top)
                 self.ui.show_message(f"Hit {nearest.name} for {dmg}!")
                 if nearest.hp <= 0:
                     self._kill_enemy(nearest)
@@ -794,9 +806,9 @@ class GameManager:
                             if is_hit:
                                 enemy.hp -= dmg
                                 primary, secondary = self.player.get_xp_skill_for_hit()
-                                self.player.skills.gain_xp(primary, 5)
+                                self._award_xp(primary, 5, self.player.rect.centerx, self.player.rect.top)
                                 if secondary:
-                                    self.player.skills.gain_xp(secondary, 2)
+                                    self._award_xp(secondary, 2, self.player.rect.centerx, self.player.rect.top)
                                 self.ui.show_message(f"Hit {enemy.name} for {dmg}!")
                                 if enemy.hp <= 0:
                                     self._kill_enemy(enemy)
@@ -825,7 +837,7 @@ class GameManager:
                     dmg = random.randint(1, enemy.max_hit)
                     if self.player.take_damage(dmg):
                         actual = max(1, dmg - self.player.get_defense())
-                        self.player.skills.gain_xp("defense", 3)
+                        self._award_xp("defense", 3, self.player.rect.centerx, self.player.rect.top)
                         self.ui.show_message(f"{enemy.name} hits you for {actual}!")
                         # Auto-retaliate when idle
                         if self.player.current_action is None and self.player.hp > 0:
@@ -841,9 +853,9 @@ class GameManager:
                         if is_hit:
                             proj.target.hp -= dmg
                             primary, secondary = self.player.get_xp_skill_for_hit()
-                            leveled_up = self.player.skills.gain_xp(primary, 4)
+                            leveled_up = self._award_xp(primary, 4, self.player.rect.centerx, self.player.rect.top)
                             if secondary:
-                                self.player.skills.gain_xp(secondary, 2)
+                                self._award_xp(secondary, 2, self.player.rect.centerx, self.player.rect.top)
                             self.ui.show_message(f"Ranged hit {proj.target.name} for {dmg}!")
                             if leveled_up:
                                 lvl = getattr(self.player.skills, primary).level

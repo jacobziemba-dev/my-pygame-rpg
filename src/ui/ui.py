@@ -33,6 +33,10 @@ class UIManager:
         self.hit_splats = []
         self._splat_duration = 800
 
+        # Floating XP drops: list of [text, screen_x, screen_y, spawn_time_ms]
+        self.xp_drops = []
+        self._xp_drop_duration = 1000
+
         # Hotbar — 9 slots: None | item_name | style_name | "toggle_combat"
         self.hotbar_slots = [
             "toggle_combat",  # 1
@@ -133,6 +137,13 @@ class UIManager:
         color = (100, 160, 255) if is_miss else (255, 50, 50)
         self.hit_splats.append([str(damage), screen_x, screen_y, pygame.time.get_ticks(), color])
 
+    def add_xp_drop(self, skill_name, amount, world_x, world_y, camera):
+        """Spawn a floating XP gain label near the player (distinct from hit splats)."""
+        screen_x = world_x - (camera.camera_rect.x if camera else 0)
+        screen_y = world_y - (camera.camera_rect.y if camera else 0)
+        text = f"+{int(amount)} {skill_name.capitalize()}"
+        self.xp_drops.append([text, screen_x, screen_y, pygame.time.get_ticks(), (255, 220, 80)])
+
     def show_message(self, text):
         self.message = text
         self.message_timer = pygame.time.get_ticks()
@@ -156,6 +167,7 @@ class UIManager:
             self.message = ""
         now = pygame.time.get_ticks()
         self.hit_splats = [s for s in self.hit_splats if now - s[3] < self._splat_duration]
+        self.xp_drops = [d for d in self.xp_drops if now - d[3] < self._xp_drop_duration]
 
     def draw(self, surface):
         # Draw Player HP Bar
@@ -207,6 +219,24 @@ class UIManager:
             splat_surf = self.font.render(text, True, color)
             splat_surf.set_alpha(alpha)
             surface.blit(splat_surf, (int(sx) - splat_surf.get_width() // 2, int(sy) - 20 - offset_y))
+
+        # Draw floating XP drops (gold, slower rise than hit splats)
+        for drop in self.xp_drops:
+            text, sx, sy, spawn, color = drop
+            age = now - spawn
+            progress = age / self._xp_drop_duration
+            offset_y = int(progress * 22)
+            alpha = max(0, int(255 * (1.0 - progress)))
+
+            shadow = self.small_font.render(text, True, (20, 20, 20))
+            shadow.set_alpha(alpha)
+            x = int(sx) - shadow.get_width() // 2
+            y = int(sy) - 32 - offset_y
+            surface.blit(shadow, (x + 1, y + 1))
+
+            drop_surf = self.small_font.render(text, True, color)
+            drop_surf.set_alpha(alpha)
+            surface.blit(drop_surf, (x, y))
 
         # Draw overlays
         if self.show_inventory:

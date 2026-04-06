@@ -157,7 +157,12 @@ class Player(Entity):
                                          recipe = station.pending_recipe
                                          skill_name = recipe.get("skill", "crafting")
                                          xp_total = recipe["xp"] * collected
-                                         leveled_up = self.skills.gain_xp(skill_name, xp_total)
+                                         if hasattr(self.game_manager, "_award_xp"):
+                                             leveled_up = self.game_manager._award_xp(
+                                                 skill_name, xp_total, self.rect.centerx, self.rect.top
+                                             )
+                                         else:
+                                             leveled_up = self.skills.gain_xp(skill_name, xp_total)
                                          msg = f"Collected {collected} items! (+{xp_total} {skill_name.capitalize()} XP)"
                                          if leveled_up:
                                              lvl = getattr(self.skills, skill_name).level

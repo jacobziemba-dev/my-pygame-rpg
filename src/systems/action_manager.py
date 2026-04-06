@@ -2,8 +2,9 @@ import random
 import pygame
 
 class ActionManager:
-    def __init__(self, ui_manager):
+    def __init__(self, ui_manager, camera):
         self.ui = ui_manager
+        self.camera = camera
 
     def process_gathering_tick(self, player, node):
         if not node.is_active:
@@ -86,6 +87,7 @@ class ActionManager:
                     self.ui.show_message("Found some wheat seeds!")
 
             leveled_up = player.skills.gain_xp(skill_name, 25)
+            self.ui.add_xp_drop(skill_name, 25, player.rect.centerx, player.rect.top, self.camera)
             self.ui.show_message(f"Gained 1 {node.yields}! (+25 {skill_name.capitalize()} XP)")
             if leveled_up:
                 new_level = getattr(player.skills, skill_name).level

@@ -4,6 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## Recently Implemented
+
+- **28-slot inventory cap** is now enforced across pickup, gathering, crafting outputs, station collection, harvesting, and bank withdraw paths. Full inventory shows: "Your inventory is full."
+- **Level-gated equipment/tools** are now active via centralized requirements (`EQUIPMENT_REQUIREMENTS` in `settings.py`):
+  - iron_sword: Attack Lv.5
+  - iron_armor: Defense Lv.10
+  - iron_axe: Attack Lv.5
+  - iron_pickaxe: Attack Lv.5
+- **Unequip flow implemented**: right-click equipped items in inventory and choose **Remove**. If inventory has no free slot, removal is blocked with a message.
+- **Graceful terminal stop**: stopping with Ctrl+C exits cleanly without traceback spam.
+- **XP drop messages implemented**: yellow floating XP text now appears near the player for XP gains (gathering, crafting, station collection, farming, combat hits, kills, and defense XP on damage taken).
+
 ## Vision: A RuneScape-Inspired RPG
 
 This game is a **top-down 2D RPG built with pygame-ce**, designed to feel and play like **Old School RuneScape (OSRS)**. **Every design decision — controls, combat, UI, progression, economy — must be made with OSRS as the reference.** When in doubt, ask: "Does this feel like RuneScape?" If yes, do it. If not, rethink it.
@@ -60,7 +72,7 @@ Requires `pygame-ce>=2.5.0`. No test suite — all testing is manual by running 
 | Left-click ground  | Move to point (primary input)                               |
 | Left-click entity  | Default action: gather, attack, open bank/station, pick up  |
 | Right-click world  | RS-style context menu ("Chop Tree", "Attack Enemy", etc.)   |
-| Right-click inv    | Context menu: Use/Equip, Drop, Examine                      |
+| Right-click inv    | Context menu: Use/Equip, Drop, Examine, Remove (equipped)   |
 | ESC                | Close context menu / close open panels                      |
 | WASD / Arrow Keys  | Move player (fallback — cancels click-to-move)              |
 | E                  | Interact with nearby object                                 |
@@ -235,6 +247,7 @@ Item icons: `assets/sprites/{item_name}.png` (32×32). The UI falls back to a 2-
 - **Combat branching**: The 1000ms tick checks `combat_mode == "ranged" and has_bow()` for ranged (spawns Projectile), else melee (inflate(80,80) collision). XP always flows through `player.get_xp_skill_for_hit()`. Out-of-range: directly set `player.target_destination` (not `set_target_destination`) to chase without clearing `current_action`.
 - **Data-driven crafting**: All recipes live in `recipes.json`. Add `"skill"` to route XP to the correct skill. Add `"station"` to require a workstation. No code changes needed for new recipes.
 - **Skill-level checks**: Both the UI (display) and the game logic (crafting, gathering) check `recipe.get("skill", "crafting")` to get the right skill level. Do not hardcode `crafting.level` for smithing/cooking/fletching recipes.
+- **Equipment/tool requirements**: Wield requirements are centralized in `EQUIPMENT_REQUIREMENTS` in `settings.py` (currently iron_sword/iron_axe/iron_pickaxe Attack 5, iron_armor Defense 10). Enforce these gates through item use/equip flows.
 - **Station XP**: When `_handle_station_input` starts processing, it sets `station.pending_recipe = recipe`. When the player collects output (`_interact` or click path in `player.py`), the game awards `recipe["xp"] × collected` to `recipe["skill"]` and clears `pending_recipe`.
 - **Right-click context menu**: `GameManager.show_world_context_menu(screen_pos)` detects the entity under the cursor via `_find_entity_at_world()`, builds a list of `{"label": str, "action": callable}` options, and passes them to `ui.show_context_menu()`. Left-clicking an option calls `ui.handle_context_menu_click()` which returns the stored callable. Any other click or ESC dismisses it. Inventory right-click goes through `_show_inventory_context_menu()`. Entity pathfinding is extracted to `_pathfind_to_entity(world_x, world_y, entity)`.
 - **Point-and-click interaction**: Clicking an entity pathfinds to the nearest walkable adjacent tile. Interaction triggers only on arrival at the final waypoint. Intermediate waypoints do not fire interactions.
@@ -281,9 +294,9 @@ Ordered by RS-authenticity impact. Do these in order when possible.
 
 #### Combat & Progression
 
-- [ ] **XP drop messages** — RS-style "+25 Woodcutting" yellow text floating upward near the player on every XP gain (distinct from hit splats; use same fade/drift system)
-- [ ] **Level-gated equipment** — iron_sword requires Attack Lv.5; iron_armor requires Defense Lv.10; iron_axe/pickaxe require Attack Lv.5. Show "You need Attack Lv.X to wield this." message
-- [ ] **Unequip system** — right-clicking an equipped item in the inventory shows "Remove" option; unequips back to inventory
+- [x] **XP drop messages** — RS-style "+25 Woodcutting" yellow text floating upward near the player on every XP gain (distinct from hit splats; use same fade/drift system)
+- [x] **Level-gated equipment** — iron_sword requires Attack Lv.5; iron_armor requires Defense Lv.10; iron_axe/pickaxe require Attack Lv.5. Show "You need Attack Lv.X to wield this." message
+- [x] **Unequip system** — right-clicking an equipped item in the inventory shows "Remove" option; unequips back to inventory
 - [ ] **Respawn on death** — player dies → fades to black → respawns at bank spawn point with all items kept (RS "safe death" mode). Reset HP to full.
 - [ ] **Item tier progression** — add Steel tier (requires Smithing Lv.20+) above Iron. Steel sword, steel armor, steel axe/pickaxe. Each tier is a meaningful power step.
 
@@ -295,7 +308,7 @@ Ordered by RS-authenticity impact. Do these in order when possible.
 
 #### UI / Inventory
 
-- [ ] **Inventory cap** — hard limit of 28 slots. When full, show "Your inventory is full." and prevent picking up. Forces bank runs — core RS loop.
+- [x] **Inventory cap** — hard limit of 28 slots. When full, show "Your inventory is full." and prevent picking up. Forces bank runs — core RS loop.
 - [ ] **Minimap** — small square map in top-right corner. Shows player dot (white), enemies (red dots), bank (yellow dot), resource nodes (green dots). Updates each frame.
 - [ ] **Item drop names** — text label under each ResourceItem on the ground showing the item name (RS style). Small font, white text with black shadow.
 
