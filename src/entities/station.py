@@ -48,7 +48,8 @@ class Station:
                     
     def collect(self, player):
         if self.processed_items > 0:
-            player.inventory.add_item(self.output_item, self.processed_items)
+            if not player.inventory.add_item(self.output_item, self.processed_items):
+                return 0
             collected = self.processed_items
             self.processed_items = 0
             return collected

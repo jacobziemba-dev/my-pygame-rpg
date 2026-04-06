@@ -185,15 +185,25 @@ class Player(Entity):
                              item = self.interaction_target
                              if item in self.game_manager.resources:
                                  if item.resource_type == "chest":
-                                     self.inventory.add_item("wood", 10)
-                                     self.inventory.add_item("stone", 10)
+                                     wood_ok = self.inventory.add_item("wood", 10)
+                                     stone_ok = self.inventory.add_item("stone", 10)
                                      if hasattr(self.game_manager, 'ui'):
-                                        self.game_manager.ui.show_message("Opened Chest! Huge Loot gained.")
+                                        if wood_ok or stone_ok:
+                                            self.game_manager.ui.show_message("Opened Chest! Huge Loot gained.")
+                                        else:
+                                            self.game_manager.ui.show_message("Your inventory is full.")
                                  else:
-                                     self.inventory.add_item(item.resource_type, 1)
-                                     if hasattr(self.game_manager, 'ui'):
-                                        self.game_manager.ui.show_message(f"Picked up 1 {item.resource_type}!")
-                                 self.game_manager.resources.remove(item)
+                                     if self.inventory.add_item(item.resource_type, 1):
+                                         if hasattr(self.game_manager, 'ui'):
+                                            self.game_manager.ui.show_message(f"Picked up 1 {item.resource_type}!")
+                                         self.game_manager.resources.remove(item)
+                                     else:
+                                         if hasattr(self.game_manager, 'ui'):
+                                            self.game_manager.ui.show_message("Your inventory is full.")
+                                         # Keep item on the ground when pickup fails.
+                                         
+                                 if item.resource_type == "chest" and (wood_ok or stone_ok):
+                                     self.game_manager.resources.remove(item)
 
                         self.interaction_target = None
                     
@@ -313,6 +323,16 @@ class Player(Entity):
                 "longrange": ("ranged", "defense"),
             }.get(self.combat_style, ("ranged", None))
 
+    def _check_item_requirement(self, item_name):
+        req = EQUIPMENT_REQUIREMENTS.get(item_name)
+        if not req:
+            return True, ""
+        skill_name, level_required = req
+        current = getattr(self.skills, skill_name).level
+        if current < level_required:
+            return False, f"You need {skill_name.capitalize()} Lv.{level_required} to wield this."
+        return True, ""
+
     def use_item(self, item_name):
         if self.inventory.items.get(item_name, 0) > 0:
             if item_name == "bread":
@@ -325,6 +345,9 @@ class Player(Entity):
                 return True, "Healed 15 HP with cooked fish!"
             # For gear, equip it
             if item_name in ["sword", "iron_sword", "iron_armor", "shortbow"]:
+                meets_req, req_msg = self._check_item_requirement(item_name)
+                if not meets_req:
+                    return False, req_msg
                 if item_name not in self.equipped_items:
                     self.inventory.remove_item(item_name, 1)
                     self.equipped_items.append(item_name)
@@ -333,3 +356,14 @@ class Player(Entity):
                         self.combat_style = "rapid"
                     return True, f"Equipped {item_name.replace('_', ' ').title()}!"
         return False, "Cannot use this item."
+
+    def unequip_item(self, item_name):
+        if item_name not in self.equipped_items:
+            return False, "That item is not equipped."
+        if not self.inventory.add_item(item_name, 1):
+            return False, "Your inventory is full."
+
+        self.equipped_items.remove(item_name)
+        if item_name == "shortbow" and self.combat_mode == "ranged" and not self.has_bow():
+            self.set_combat_mode("melee")
+        return True, f"Removed {item_name.replace('_', ' ').title()}."

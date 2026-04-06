@@ -32,6 +32,14 @@ NUM_CHESTS = 5
 # Combat settings
 RANGED_ATTACK_RANGE = 250  # px; used when bow is equipped
 
+# Equipment/tool wield requirements keyed by item id.
+EQUIPMENT_REQUIREMENTS = {
+    "iron_sword": ("attack", 5),
+    "iron_armor": ("defense", 10),
+    "iron_axe": ("attack", 5),
+    "iron_pickaxe": ("attack", 5),
+}
+
 # Enemy type definitions
 # drops: list of (item_name, min_amount, max_amount, chance)
 ENEMY_TYPE_STATS = {

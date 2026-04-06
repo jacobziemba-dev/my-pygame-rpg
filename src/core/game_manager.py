@@ -267,9 +267,28 @@ class GameManager:
         })
         self.ui.show_context_menu(screen_pos, options)
 
+    def _show_equipped_context_menu(self, screen_pos, item_index):
+        """RS-style right-click menu for an equipped item."""
+        if not (0 <= item_index < len(self.player.equipped_items)):
+            return
+        item_name = self.player.equipped_items[item_index]
+        display_name = item_name.replace("_", " ").title()
+
+        options = [
+            {
+                "label": f"Remove {display_name}",
+                "action": lambda n=item_name: self._inv_remove_equipped(n)
+            },
+            {
+                "label": f"Examine {display_name}",
+                "action": lambda dn=display_name: self.ui.show_message(f"You're wearing {dn}.")
+            }
+        ]
+        self.ui.show_context_menu(screen_pos, options)
+
     def _inv_use_item(self, item_name):
         success, msg = self.player.use_item(item_name)
-        self.ui.show_message(msg if success else "Can't use that right now.")
+        self.ui.show_message(msg)
 
     def _inv_drop_item(self, item_name):
         self.player.inventory.remove_item(item_name, 1)
@@ -277,6 +296,10 @@ class GameManager:
         drop_y = self.player.rect.centery + random.randint(-20, 20)
         self.resources.append(ResourceItem(drop_x, drop_y, item_name))
         self.ui.show_message(f"Dropped 1 {item_name.replace('_', ' ').title()}")
+
+    def _inv_remove_equipped(self, item_name):
+        success, msg = self.player.unequip_item(item_name)
+        self.ui.show_message(msg)
 
             
     def handle_events(self):
@@ -304,10 +327,7 @@ class GameManager:
                     if 0 <= index < len(active_items):
                         item_name, _ = active_items[index]
                         success, msg = self.player.use_item(item_name)
-                        if success:
-                            self.ui.show_message(msg)
-                        else:
-                            self.ui.show_message("Cannot use this item.")
+                        self.ui.show_message(msg)
                 elif action == "deposit_item":
                     active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
                     if 0 <= index < len(active_items):
@@ -318,8 +338,10 @@ class GameManager:
                     active_items = [(item, count) for item, count in self.player.bank_inventory.items.items() if count > 0]
                     if 0 <= index < len(active_items):
                         item_name, _ = active_items[index]
-                        self.player.bank_inventory.remove_item(item_name, 1)
-                        self.player.inventory.add_item(item_name, 1)
+                        if self.player.inventory.add_item(item_name, 1):
+                            self.player.bank_inventory.remove_item(item_name, 1)
+                        else:
+                            self.ui.show_message("Your inventory is full.")
                 elif action == "right_click_inventory":
                     # Show RS-style context menu for hovered inventory slot
                     if event.type == pygame.MOUSEBUTTONDOWN and self.ui.show_inventory:
@@ -328,6 +350,12 @@ class GameManager:
                             if rect.collidepoint(event.pos):
                                 self._show_inventory_context_menu(event.pos, i)
                                 break
+                        else:
+                            equipped_rects = self.ui.get_equipped_slot_rects()
+                            for i, rect in enumerate(equipped_rects):
+                                if rect.collidepoint(event.pos):
+                                    self._show_equipped_context_menu(event.pos, i)
+                                    break
                 elif action == "craft_item":
                     recipes = self.recipe_manager.get_handcrafted()
                     if 0 <= index < len(recipes):
@@ -418,10 +446,7 @@ class GameManager:
             if 0 <= self.ui.inventory_index < len(active_items):
                 item_name, _ = active_items[self.ui.inventory_index]
                 success, msg = self.player.use_item(item_name)
-                if success:
-                    self.ui.show_message(msg)
-                else:
-                    self.ui.show_message("Cannot use this item.")
+                self.ui.show_message(msg)
             else:
                 self.ui.show_message("No item selected.")
 
@@ -576,9 +601,11 @@ class GameManager:
         for item in self.resources[:]:
             if self.player.rect.inflate(10, 10).colliderect(item.rect):
                 if isinstance(item, ResourceItem):
-                    self.player.inventory.add_item(item.resource_type, 1)
-                    self.ui.show_message(f"Picked up 1 {item.resource_type}!")
-                    self.resources.remove(item)
+                    if self.player.inventory.add_item(item.resource_type, 1):
+                        self.ui.show_message(f"Picked up 1 {item.resource_type}!")
+                        self.resources.remove(item)
+                    else:
+                        self.ui.show_message("Your inventory is full.")
                 elif isinstance(item, ResourceNode) and item.is_active:
                     self.player.current_action = "gathering"
                     self.player.action_target = item
@@ -592,8 +619,10 @@ class GameManager:
         
         if target_crop:
             if target_crop.is_mature:
+                if not self.player.inventory.add_item("wheat", 3):
+                    self.ui.show_message("Your inventory is full.")
+                    return
                 self.crops.remove(target_crop)
-                self.player.inventory.add_item("wheat", 3)
                 if self.player.skills.gain_xp("farming", 20):
                     self.ui.show_message("Farming Level UP!")
                 self.ui.show_message(f"Harvested {target_crop.crop_type}!")

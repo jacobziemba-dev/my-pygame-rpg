@@ -276,6 +276,26 @@ class UIManager:
             rects.append(pygame.Rect(x, y, slot_size, slot_size))
         return rects
 
+    def get_equipped_slot_rects(self):
+        rects = []
+        panel_w, panel_h = 320, 400
+        panel_x = (SCREEN_WIDTH - panel_w) // 2
+        panel_y = (SCREEN_HEIGHT - panel_h) // 2
+        gear_y = panel_y + 255
+        start_x = panel_x + 20
+        start_y = gear_y + 40
+        slots_per_row = 6
+        slot_size = 40
+        padding = 4
+
+        for i in range(len(self.player.equipped_items)):
+            row = i // slots_per_row
+            col = i % slots_per_row
+            x = start_x + col * (slot_size + padding)
+            y = start_y + row * (slot_size + padding)
+            rects.append(pygame.Rect(x, y, slot_size, slot_size))
+        return rects
+
     def get_crafting_recipe_rects(self):
         rects = []
         panel_w, panel_h = 400, 300
@@ -575,7 +595,7 @@ class UIManager:
             surface.blit(none_surf, (panel_x + 30, gear_y + 40))
 
         # Footer hints
-        hint = self.small_font.render("[I] Close  [Enter/LClick] Use Item  [RClick] Drop", True, (150, 150, 150))
+        hint = self.small_font.render("[I] Close  [Enter/LClick] Use Item  [RClick] Drop/Remove", True, (150, 150, 150))
         surface.blit(hint, (panel_x + panel_w // 2 - hint.get_width() // 2, panel_y + panel_h - 25))
 
     def _draw_inventory_slots(self, surface, inventory, start_x, start_y, slots_per_row=5, highlight_index=None):

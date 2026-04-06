@@ -33,23 +33,35 @@ class ActionManager:
         else:
             TOOL_DB = {
                 "bronze_axe": {"type": "axe", "power": 15, "min_level": 1},
-                "iron_axe": {"type": "axe", "power": 30, "min_level": 5},
+                "iron_axe": {"type": "axe", "power": 30, "min_level": 5, "required_attack": 5},
                 "bronze_pickaxe": {"type": "pickaxe", "power": 15, "min_level": 1},
-                "iron_pickaxe": {"type": "pickaxe", "power": 30, "min_level": 5},
+                "iron_pickaxe": {"type": "pickaxe", "power": 30, "min_level": 5, "required_attack": 5},
                 "fishing_rod": {"type": "rod", "power": 20, "min_level": 1},
                 "iron_fishing_rod": {"type": "rod", "power": 35, "min_level": 5}
             }
+
+            blocked_by_attack = False
+            attack_level = player.skills.attack.level
 
             for item_name, count in player.inventory.items.items():
                 if count > 0 and item_name in TOOL_DB:
                     tool_data = TOOL_DB[item_name]
                     if tool_data["type"] == node.tool_required:
+                        req_attack = tool_data.get("required_attack", 1)
+                        if attack_level < req_attack:
+                            blocked_by_attack = True
+                            continue
                         if skill_level >= tool_data["min_level"]:
                             has_tool = True
                             if tool_data["power"] > tool_power:
                                 tool_power = tool_data["power"]
 
             if not has_tool:
+                if blocked_by_attack:
+                    self.ui.show_message("You need Attack Lv.5 to wield this.")
+                    player.current_action = None
+                    player.action_target = None
+                    return
                 self.ui.show_message(f"Need a {node.tool_required} to harvest this (or higher skill level).")
                 player.current_action = None
                 player.action_target = None
@@ -61,13 +73,17 @@ class ActionManager:
         roll = random.uniform(0, 100)
 
         if roll <= success_chance:
+            if not player.inventory.add_item(node.yields, 1):
+                self.ui.show_message("Your inventory is full.")
+                player.current_action = None
+                player.action_target = None
+                return
             node.take_hit()
-            player.inventory.add_item(node.yields, 1)
             
             # Chance for seeds if woodcutting
             if node.node_type == "tree" and random.uniform(0, 100) < 15: # 15% chance
-                player.inventory.add_item("wheat_seeds", 1)
-                self.ui.show_message("Found some wheat seeds!")
+                if player.inventory.add_item("wheat_seeds", 1):
+                    self.ui.show_message("Found some wheat seeds!")
 
             leveled_up = player.skills.gain_xp(skill_name, 25)
             self.ui.show_message(f"Gained 1 {node.yields}! (+25 {skill_name.capitalize()} XP)")

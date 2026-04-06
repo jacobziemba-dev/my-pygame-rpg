@@ -1,8 +1,13 @@
 from src.core.game_manager import GameManager
+import pygame
 
 if __name__ == "__main__":
     game = GameManager()
-    game.run()
+    try:
+        game.run()
+    except KeyboardInterrupt:
+        # Allow clean terminal exits without traceback spam.
+        pygame.quit()
 
 
 
