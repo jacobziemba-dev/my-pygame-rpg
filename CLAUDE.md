@@ -17,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **XP drop messages implemented**: yellow floating XP text now appears near the player for XP gains (gathering, crafting, station collection, farming, combat hits, kills, and defense XP on damage taken).
 - **Safe death/respawn system**: when HP ≤ 0, screen fades to black over 600ms, then player respawns at bank spawn with full HP, clean combat state, and all items/equipment intact (RuneScape-style safe death). Shows "You died!" and "You have been recovered!" messages.
 - **Bones-to-Prayer bury action**: right-click bones in inventory and select "Bury Bone" to consume 1 bone and award +4 Prayer XP with floating XP feedback.
+- **General Store MVP implemented**: shop NPC near spawn with RS-style right-click **Trade** action. Buy/sell panel supports coin-based transactions, fixed prices, stock counts, and inventory-space checks.
 
 ## Vision: A RuneScape-Inspired RPG
 
@@ -30,8 +31,8 @@ This game is a **top-down 2D RPG built with pygame-ce**, designed to feel and pl
 - **Miss/splash system**: Attacks can miss based on accuracy vs enemy defense. Low-level players vs high-level enemies should miss often. Blue "0" splats on miss, red numbers on hit — exactly like OSRS.
 - **Auto-retaliate**: When an enemy hits the player and the player is idle, automatically fight back. This is the RS default and must always be on.
 - **Skill grinding**: Players gain XP by doing repetitive actions (chop trees, mine rocks, fight enemies, cook food, smith bars). Levels gate higher-tier content. The grind *is* the game — do not short-circuit it.
-- **XP bars and level-up feedback**: Every skill shows a gold XP bar. Level-ups are celebrated with a message. XP drops should float near the player (not yet implemented — high priority).
-- **Inventory + bank**: 28-slot inventory (currently uncapped — enforce the cap). Bank stores items long-term. Players should regularly run to the bank. The inventory being full and needing to bank is a core gameplay loop.
+- **XP bars and level-up feedback**: Every skill shows a gold XP bar. Level-ups are celebrated with a message. XP drops float near the player for immediate feedback.
+- **Inventory + bank**: 28-slot inventory cap is enforced. Bank stores items long-term. Players should regularly run to the bank. The inventory being full and needing to bank is a core gameplay loop.
 - **Gathering → Processing → Equipping loop**: Chop logs → smith bars → craft gear → equip → fight harder enemies. Every feature added should reinforce this loop.
 - **Enemy variety and scaling**: Different enemies have different combat levels, HP, max hits, drops, and aggro behavior. Weaker enemies near spawn, stronger ones further away. Players should feel progression pressure.
 - **Economy via drops and shops**: Enemies drop coins and items. A general store lets players buy supplies and sell loot. Gold is the universal currency. This gives purpose to grinding.
@@ -72,7 +73,7 @@ Requires `pygame-ce>=2.5.0`. No test suite — all testing is manual by running 
 | Key / Input        | Action                                                      |
 | ------------------ | ----------------------------------------------------------- |
 | Left-click ground  | Move to point (primary input)                               |
-| Left-click entity  | Default action: gather, attack, open bank/station, pick up  |
+| Left-click entity  | Default action: gather, attack, open bank/shop/station, pick up  |
 | Right-click world  | RS-style context menu ("Chop Tree", "Attack Enemy", etc.)   |
 | Right-click inv    | Context menu: Use/Equip, Drop, Examine, Remove (equipped)   |
 | ESC                | Close context menu / close open panels                      |
@@ -120,6 +121,7 @@ All drawable objects extend `Entity` (base class with sprite/animation support).
 - **resource_item.py** — Items dropped on the ground (from enemies or player drop). Auto-collected on click or nearby walk.
 - **projectile.py** — Arrow projectiles spawned every 1000ms tick when `player.combat_mode == "ranged"` and a bow is equipped. Travels to target, applies damage + XP (routed via `get_xp_skill_for_hit()`) on collision.
 - **bank.py** — Static 2×2 tile bank near spawn. Opening it shows the bank UI (deposit/withdraw).
+- **shop.py** — Static 2×2 tile general store near spawn. Supports fixed-price buy/sell trading via the shop UI.
 - **station.py** — Furnace, Workbench, Stove. Each station processes recipes with a timer. Stores `pending_recipe` so XP is awarded when the player collects output.
 - **crop.py** — Multi-stage farmable plants. Player tills, plants seeds, waits, harvests.
 
@@ -142,6 +144,7 @@ Single `UIManager` class. Renders all HUD and menus. Key features:
 - **Inventory panel** (I) — 6-column grid of item slots with icons and stack counts; equipped gear section below
 - **Crafting menu** (C) — hand-crafted recipes only; shows correct skill level requirement per recipe
 - **Bank UI** — dual-pane (player inventory left, bank right); left-click to deposit/withdraw; T to deposit all
+- **Shop UI** — dual-pane (shop stock left, player inventory right); left-click to buy/sell one item with coin checks and stock updates
 - **Station menu** — shown when interacting with furnace/workbench/stove; checks the recipe's actual skill level
 - **Hit splats** — floating damage numbers over enemies; red for hits, blue "0" for misses (RS splash); fade and drift upward over 800ms. `add_hit_splat(damage, wx, wy, camera, is_miss=False)`
 - **Message bar** — centered yellow text at top for action feedback (3-second duration)
@@ -254,8 +257,8 @@ Item icons: `assets/sprites/{item_name}.png` (32×32). The UI falls back to a 2-
 - **Right-click context menu**: `GameManager.show_world_context_menu(screen_pos)` detects the entity under the cursor via `_find_entity_at_world()`, builds a list of `{"label": str, "action": callable}` options, and passes them to `ui.show_context_menu()`. Left-clicking an option calls `ui.handle_context_menu_click()` which returns the stored callable. Any other click or ESC dismisses it. Inventory right-click goes through `_show_inventory_context_menu()`. Entity pathfinding is extracted to `_pathfind_to_entity(world_x, world_y, entity)`.
 - **Point-and-click interaction**: Clicking an entity pathfinds to the nearest walkable adjacent tile. Interaction triggers only on arrival at the final waypoint. Intermediate waypoints do not fire interactions.
 - **Waypoint movement**: `player.set_target_destination()` accepts an optional `waypoints` list. Player walks waypoints in order; only the last waypoint triggers interaction and snapping.
-- **Solid-object collision**: Axis-separated resolution via `resolve_collision_x` / `resolve_collision_y` (in `entity.py`). `GameManager._get_solid_obstacles()` returns active non-fishing ResourceNodes + stations + bank each frame.
-- **Y-sorted rendering**: Stations, enemies, bank, and player are sorted by `rect.bottom` before drawing. Ground-level objects (nodes, crops, projectiles) draw first without sorting.
+- **Solid-object collision**: Axis-separated resolution via `resolve_collision_x` / `resolve_collision_y` (in `entity.py`). `GameManager._get_solid_obstacles()` returns active non-fishing ResourceNodes + stations + shop + bank each frame.
+- **Y-sorted rendering**: Stations, enemies, shop, bank, and player are sorted by `rect.bottom` before drawing. Ground-level objects (nodes, crops, projectiles) draw first without sorting.
 - **Hit splats**: `ui.add_hit_splat(damage, world_x, world_y, camera, is_miss=False)` converts world coords to screen. Red for hits, blue for misses. Drawn each frame with fade-out alpha and upward drift. Removed in `update()` after `_splat_duration` (800ms).
 - **Enemy types**: Defined entirely in `ENEMY_TYPE_STATS` in `settings.py`. Adding a new enemy type requires only a new dict entry there — no changes to `enemy.py` or `game_manager.py`. Then add it to `_generate_enemies()` with a count constant.
 
@@ -305,7 +308,7 @@ Ordered by RS-authenticity impact. Do these in order when possible.
 #### Economy
 
 - [ ] **Gold currency** — coins stack in inventory; displayed separately in HUD. Enemies already drop coins — wire them up as a real currency value.
-- [ ] **Shop / general store** — NPC near spawn. Right-click → "Trade". Sells: bronze/iron tools, arrows, bread, seeds. Buys: gathered resources for coins. Uses the context menu system.
+- [x] **Shop / general store** — NPC near spawn. Right-click → "Trade". Sells: bronze/iron tools, arrows, bread, seeds. Buys: gathered resources for coins. Uses the context menu system.
 - [x] **Bones → Prayer XP** — right-click bones in inventory → "Bury" → +4 Prayer XP. Adds Prayer as a real skill.
 
 #### UI / Inventory

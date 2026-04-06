@@ -4,8 +4,9 @@ from src.systems.recipe_manager import RecipeManager
 from src.core.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 
 class UIManager:
-    def __init__(self, player):
+    def __init__(self, player, shop=None):
         self.player = player
+        self.shop = shop
         self.recipe_manager = RecipeManager()
         pygame.font.init() # Ensure font module is initialized
         self.font = pygame.font.SysFont(None, 24)
@@ -22,6 +23,8 @@ class UIManager:
         self.inventory_index = 0
         self.bank_index = 0
         self.active_bank = False
+        self.active_shop = False
+        self.shop_index = 0
         self.active_station = None
         self.station_index = 0
         self.skills_scroll_y = 0
@@ -57,6 +60,76 @@ class UIManager:
         self.is_fading = False
         self.fade_start_time = 0
         self.fade_duration = 600  # milliseconds
+
+    def _draw_shop_inventory(self, surface):
+        """Draw the shop UI with buy and sell sections."""
+        panel_w, panel_h = 600, 450
+        panel_x = (surface.get_width() - panel_w) // 2
+        panel_y = (surface.get_height() - panel_h) // 2
+
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel.fill((40, 30, 20, 230))
+        surface.blit(panel, (panel_x, panel_y))
+
+        title = self.font.render("General Store", True, (255, 215, 0))
+        surface.blit(title, (panel_x + 20, panel_y + 15))
+        
+        # BUY section (Left) - items shop is selling
+        coins = self.player.inventory.get_item_count("coins")
+        buy_title = self.font.render(f"Buy (You have {coins} coins)", True, (200, 200, 200))
+        surface.blit(buy_title, (panel_x + 20, panel_y + 50))
+        self._draw_shop_buy_slots(surface, panel_x + 20, panel_y + 80)
+        
+        # SELL section (Right) - items player can sell to shop  
+        sell_title = self.font.render("Sell", True, (200, 200, 200))
+        surface.blit(sell_title, (panel_x + 320, panel_y + 50))
+        self._draw_inventory_slots(surface, self.player.inventory, panel_x + 320, panel_y + 80, slots_per_row=6, highlight_index=None)
+        
+        hint = self.font.render("[ESC] Close  [LClick] Buy/Sell 1", True, (150, 150, 150))
+        surface.blit(hint, (panel_x + 20, panel_y + panel_h - 30))
+
+    def _draw_shop_buy_slots(self, surface, start_x, start_y):
+        """Draw the shop's items for sale with prices."""
+        slot_size = 40
+        padding = 4
+        slots_per_row = 6
+        
+        if not self.shop:
+            font_small = pygame.font.SysFont(None, 20)
+            text = font_small.render("(Shop not available)", True, (150, 150, 150))
+            surface.blit(text, (start_x, start_y))
+            return
+        
+        # Draw shop's items for sale with prices
+        shop_items = [(item, count) for item, count in self.shop.inventory.items.items() if count > 0]
+        
+        for i, (item_name, count) in enumerate(shop_items):
+            row = i // slots_per_row
+            col = i % slots_per_row
+            x = start_x + col * (slot_size + padding)
+            y = start_y + row * (slot_size + padding)
+            
+            # Draw slot background
+            pygame.draw.rect(surface, (60, 50, 40), (x, y, slot_size, slot_size))
+            pygame.draw.rect(surface, (100, 80, 60), (x, y, slot_size, slot_size), 1)
+            
+            # Draw item icon
+            if item_name in self.item_images:
+                surface.blit(self.item_images[item_name], (x, y))
+            else:
+                # Fallback to 2-letter abbreviation
+                abbrev = item_name[:2].upper()
+                abbrev_surf = self.small_font.render(abbrev, True, (200, 200, 200))
+                surface.blit(abbrev_surf, (x + 12, y + 12))
+            
+            # Draw count
+            count_surf = self.small_font.render(str(count), True, (255, 215, 0))
+            surface.blit(count_surf, (x + slot_size - 14, y + slot_size - 14))
+            
+            # Draw price label below item
+            price = self.shop.get_buy_price(item_name)
+            price_surf = self.small_font.render(f"{price}g", True, (255, 200, 100))
+            surface.blit(price_surf, (x, y + slot_size + 2))
 
     def show_context_menu(self, pos, options):
         self.context_menu = {"pos": pos, "options": options}
@@ -119,7 +192,8 @@ class UIManager:
         # We'll try to load sprites for any item that might exist in inventory
         item_types = ["wood", "stone", "sword", "iron_ore", "iron_bar", "iron_sword", 
                       "iron_axe", "iron_pickaxe", "chest_item", "bread", "wheat", 
-                      "iron_armor", "wheat_seeds", "bronze_axe", "bronze_pickaxe", "bronze_hoe"]
+                      "iron_armor", "wheat_seeds", "bronze_axe", "bronze_pickaxe", "bronze_hoe",
+                      "coins", "arrows", "raw_fish", "cooked_fish", "rope", "rod", "bronze_sword"]
         
         for item in item_types:
             sprite_name = item
@@ -252,6 +326,8 @@ class UIManager:
             self._draw_crafting_menu(surface)
         if self.active_bank:
             self._draw_bank_inventory(surface)
+        if self.active_shop:
+            self._draw_shop_inventory(surface)
         if self.active_station:
             self._draw_station_menu(surface)
 
@@ -281,6 +357,48 @@ class UIManager:
         
         active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
         
+        for i in range(len(active_items)):
+            row = i // slots_per_row
+            col = i % slots_per_row
+            x = start_x + col * (slot_size + padding)
+            y = start_y + row * (slot_size + padding)
+            rects.append(pygame.Rect(x, y, slot_size, slot_size))
+        return rects
+
+    def get_shop_buy_slot_rects(self):
+        rects = []
+        if not self.shop:
+            return rects
+        panel_w, panel_h = 600, 450
+        panel_x = (SCREEN_WIDTH - panel_w) // 2
+        panel_y = (SCREEN_HEIGHT - panel_h) // 2
+        start_x = panel_x + 20
+        start_y = panel_y + 80
+        slots_per_row = 6
+        slot_size = 40
+        padding = 4
+
+        shop_items = [(item, count) for item, count in self.shop.inventory.items.items() if count > 0]
+        for i in range(len(shop_items)):
+            row = i // slots_per_row
+            col = i % slots_per_row
+            x = start_x + col * (slot_size + padding)
+            y = start_y + row * (slot_size + padding)
+            rects.append(pygame.Rect(x, y, slot_size, slot_size))
+        return rects
+
+    def get_shop_sell_slot_rects(self):
+        rects = []
+        panel_w, panel_h = 600, 450
+        panel_x = (SCREEN_WIDTH - panel_w) // 2
+        panel_y = (SCREEN_HEIGHT - panel_h) // 2
+        start_x = panel_x + 320
+        start_y = panel_y + 80
+        slots_per_row = 6
+        slot_size = 40
+        padding = 4
+
+        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
         for i in range(len(active_items)):
             row = i // slots_per_row
             col = i % slots_per_row
@@ -346,7 +464,7 @@ class UIManager:
         return rects
 
     def handle_mouse_event(self, event):
-        if not (self.show_inventory or self.show_crafting or self.active_bank):
+        if not (self.show_inventory or self.show_crafting or self.active_bank or self.active_shop):
             return None, None
 
         if event.type == pygame.MOUSEMOTION:
@@ -361,6 +479,17 @@ class UIManager:
                      if rect.collidepoint(event.pos):
                          self.bank_index = i
                          return None, None
+            elif self.active_shop:
+                buy_rects = self.get_shop_buy_slot_rects()
+                for i, rect in enumerate(buy_rects):
+                    if rect.collidepoint(event.pos):
+                        self.shop_index = i
+                        return None, None
+                sell_rects = self.get_shop_sell_slot_rects()
+                for i, rect in enumerate(sell_rects):
+                    if rect.collidepoint(event.pos):
+                        self.inventory_index = i
+                        return None, None
             elif self.show_inventory:
                 rects = self.get_inventory_slot_rects()
                 for i, rect in enumerate(rects):
@@ -384,6 +513,15 @@ class UIManager:
                      for i, rect in enumerate(b_rects):
                          if rect.collidepoint(event.pos):
                              return "withdraw_item", i
+                elif self.active_shop:
+                    buy_rects = self.get_shop_buy_slot_rects()
+                    for i, rect in enumerate(buy_rects):
+                        if rect.collidepoint(event.pos):
+                            return "shop_buy_item", i
+                    sell_rects = self.get_shop_sell_slot_rects()
+                    for i, rect in enumerate(sell_rects):
+                        if rect.collidepoint(event.pos):
+                            return "shop_sell_item", i
                 elif self.show_inventory:
                     rects = self.get_inventory_slot_rects()
                     for i, rect in enumerate(rects):

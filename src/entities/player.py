@@ -5,6 +5,8 @@ from src.systems.inventory import Inventory
 from src.systems.skill_manager import SkillManager
 from src.core.settings import *
 from src.entities.entity import Entity, resolve_collision_x, resolve_collision_y
+from src.entities.bank import Bank
+from src.entities.shop import Shop
 
 class Player(Entity): 
     def __init__(self, x, y, game_manager):
@@ -180,11 +182,18 @@ class Player(Entity):
                              if hasattr(self.game_manager, 'ui'):
                                  self.game_manager.ui.active_chest = self.interaction_target
                                  self.game_manager.ui.show_message("Opened chest storage.")
-                        elif hasattr(self.interaction_target, 'inventory') and hasattr(self.interaction_target, 'rect') and hasattr(self.interaction_target, 'image'):
+                        elif isinstance(self.interaction_target, Bank):
                              # It's the Bank
                              if hasattr(self.game_manager, 'ui'):
+                                 self.game_manager.ui.active_shop = False
                                  self.game_manager.ui.active_bank = True
                                  self.game_manager.ui.show_message("Opened bank vault.")
+                        elif isinstance(self.interaction_target, Shop):
+                             # It's the Shop
+                             if hasattr(self.game_manager, 'ui'):
+                                 self.game_manager.ui.active_bank = False
+                                 self.game_manager.ui.active_shop = True
+                                 self.game_manager.ui.show_message("Opened shop.")
                         elif hasattr(self.interaction_target, 'resource_type'):
                              # It's a dropped item
                              item = self.interaction_target

@@ -15,6 +15,7 @@ from src.systems.action_manager import ActionManager
 from src.systems.pathfinder import find_path
 from src.systems.recipe_manager import RecipeManager
 from src.entities.projectile import Projectile
+from src.entities.shop import Shop
 from src.core.settings import *
 
 class GameManager:
@@ -41,6 +42,11 @@ class GameManager:
         self.bank = Bank(_hub_bank_x, _hub_bank_y)
 
         _station_x = _hub_bank_x + TILE_SIZE * 2 + TILE_SIZE  # one tile gap past bank
+        # Shop is 2×2 tiles; place to the left of bank
+        _shop_x = _hub_bank_x - TILE_SIZE * 2 - TILE_SIZE
+        _shop_y = _hub_bank_y + TILE_SIZE * 2
+        self.shop = Shop(_shop_x, _shop_y)
+
         self.stations = []
         self.stations.append(Station(_station_x, _hub_bank_y, "furnace", "Furnace"))
         self.stations.append(
@@ -55,7 +61,7 @@ class GameManager:
         self.respawn_queue = []  # [(respawn_at_ms, enemy_type, spawn_x, spawn_y)]
 
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
-        self.ui = UIManager(self.player)
+        self.ui = UIManager(self.player, self.shop)
         self.action_manager = ActionManager(self.ui, self.camera)
         self.last_tick = pygame.time.get_ticks()
         self._last_frame_ms = 0.0
@@ -155,6 +161,8 @@ class GameManager:
         for enemy in self.enemies:
             if click_rect.colliderect(enemy.rect):
                 return enemy
+        if click_rect.colliderect(self.shop.rect):
+            return self.shop
         if click_rect.colliderect(self.bank.rect):
             return self.bank
         for station in self.stations:
@@ -251,6 +259,16 @@ class GameManager:
             options.append({
                 "label": "Examine Bank",
                 "action": lambda: self.ui.show_message("The bank. Safely stores your items.")
+            })
+        elif isinstance(entity, Shop):
+            _e = entity
+            options.append({
+                "label": "Trade Shop",
+                "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e)
+            })
+            options.append({
+                "label": "Examine Shop",
+                "action": lambda: self.ui.show_message("A general store. Trade items for coins.")
             })
         elif isinstance(entity, Station):
             name = entity.name
@@ -387,6 +405,34 @@ class GameManager:
                             self.player.bank_inventory.remove_item(item_name, 1)
                         else:
                             self.ui.show_message("Your inventory is full.")
+                elif action == "shop_buy_item":
+                    shop_items = [(item, count) for item, count in self.shop.inventory.items.items() if count > 0]
+                    if 0 <= index < len(shop_items):
+                        item_name, _ = shop_items[index]
+                        price = self.shop.get_buy_price(item_name)
+                        coins = self.player.inventory.get_item_count("coins")
+                        if coins < price:
+                            self.ui.show_message("Not enough coins.")
+                        elif not self.player.inventory.add_item(item_name, 1):
+                            self.ui.show_message("Your inventory is full.")
+                        else:
+                            self.player.inventory.remove_item("coins", price)
+                            self.shop.inventory.remove_item(item_name, 1)
+                            self.ui.show_message(f"Bought 1 {item_name.replace('_', ' ')} for {price} coins.")
+                elif action == "shop_sell_item":
+                    active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
+                    if 0 <= index < len(active_items):
+                        item_name, _ = active_items[index]
+                        if item_name == "coins":
+                            self.ui.show_message("You can't sell coins.")
+                        elif not self.shop.can_sell_item(item_name):
+                            self.ui.show_message("The shop won't buy that item.")
+                        else:
+                            price = self.shop.get_sell_price(item_name)
+                            self.player.inventory.remove_item(item_name, 1)
+                            self.player.inventory.add_item("coins", price)
+                            self.shop.inventory.add_item(item_name, 1)
+                            self.ui.show_message(f"Sold 1 {item_name.replace('_', ' ')} for {price} coins.")
                 elif action == "right_click_inventory":
                     # Show RS-style context menu for hovered inventory slot
                     if event.type == pygame.MOUSEBUTTONDOWN and self.ui.show_inventory:
@@ -415,7 +461,7 @@ class GameManager:
                             self.ui.show_message(result)
                 elif action is None and event.type == pygame.MOUSEBUTTONDOWN:
                     panels_open = (self.ui.show_inventory or self.ui.show_crafting or
-                                   self.ui.active_bank or self.ui.show_skills or
+                                   self.ui.active_bank or self.ui.active_shop or self.ui.show_skills or
                                    getattr(self.ui, 'active_station', None))
                     if not panels_open:
                         if event.button == 1:
@@ -448,6 +494,8 @@ class GameManager:
                     self._handle_crafting_input(event)
                 elif self.ui.active_bank:
                     self._handle_bank_input(event)
+                elif self.ui.active_shop:
+                    self._handle_shop_input(event)
                 elif getattr(self.ui, 'active_station', None):
                     self._handle_station_input(event)
                 else:
@@ -504,6 +552,11 @@ class GameManager:
                     self.player.bank_inventory.add_item(item, count)
                     self.player.inventory.items[item] = 0
             self.ui.show_message("Deposited all items into bank.")
+
+    def _handle_shop_input(self, event):
+        """Handle shop interaction input (buy/sell items)."""
+        if event.key == pygame.K_ESCAPE or event.key == pygame.K_e:
+            self.ui.active_shop = False
 
     def _handle_station_input(self, event):
         station = self.ui.active_station
@@ -614,8 +667,16 @@ class GameManager:
     def _interact(self):
         # Check for bank
         if self.player.rect.inflate(10, 10).colliderect(self.bank.rect):
+            self.ui.active_shop = False
             self.ui.active_bank = True
             self.ui.show_message("Opened bank vault.")
+            return
+
+        # Check for shop
+        if self.player.rect.inflate(10, 10).colliderect(self.shop.rect):
+            self.ui.active_bank = False
+            self.ui.active_shop = True
+            self.ui.show_message("Opened shop.")
             return
 
         # Check for stations
@@ -782,6 +843,7 @@ class GameManager:
                 obstacles.append(item.rect)
         for station in self.stations:
             obstacles.append(station.rect)
+        obstacles.append(self.shop.rect)
         obstacles.append(self.bank.rect)
         return obstacles
 
@@ -933,7 +995,7 @@ class GameManager:
 
         # Y-sort entities so lower ones draw on top (correct depth)
         y_sorted = sorted(
-            self.stations + self.enemies + [self.bank, self.player],
+              self.stations + self.enemies + [self.bank, self.shop, self.player],
             key=lambda e: e.rect.bottom
         )
         for entity in y_sorted:
