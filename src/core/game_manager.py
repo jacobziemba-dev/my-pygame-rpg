@@ -1,5 +1,6 @@
 import pygame
 import random
+import time
 from src.entities.player import Player
 from src.entities.resource_item import ResourceItem
 from src.entities.resource_node import ResourceNode
@@ -98,12 +99,24 @@ class GameManager:
 
     def _restart(self):
         self.game_over = False
-        self.player = Player(PLAYER_START_X, PLAYER_START_Y, self)
-        self.resources = []
-        self._generate_resources()
-        self.enemies = []
-        self._generate_enemies()
-        self.projectiles = []
+
+    def _handle_player_death(self):
+        """Initiate death fade animation and schedule respawn."""
+        self.ui.show_message("You died!")
+        self.ui.is_fading = True
+        self.ui.fade_start_time = pygame.time.get_ticks()
+
+    def _handle_player_respawn(self):
+        """Respawn player at bank with full HP and clean combat state. Items and equipment are kept (safe death)."""
+        # Teleport to bank spawn point
+        self.player.rect.centerx = PLAYER_START_X
+        self.player.rect.centery = PLAYER_START_Y
+        
+        # Reset player state (clears action/combat, restores full HP)
+        self.player.reset_after_death()
+        
+        # Show respawn message
+        self.ui.show_message("You have been recovered!")
         self.respawn_queue = []
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
         self.ui = UIManager(self.player)
@@ -262,6 +275,15 @@ class GameManager:
         display_name = item_name.replace("_", " ").title()
 
         options = []
+        
+        # Special "Bury" option for bones
+        if item_name == "bones":
+            _n = item_name
+            options.append({
+                "label": "Bury Bone",
+                "action": lambda n=_n: self._bury_bone()
+            })
+        
         # Use / Equip option
         _n = item_name
         options.append({
@@ -312,6 +334,17 @@ class GameManager:
     def _inv_remove_equipped(self, item_name):
         success, msg = self.player.unequip_item(item_name)
         self.ui.show_message(msg)
+
+    def _bury_bone(self):
+        """Bury a bone and award Prayer XP."""
+        if self.player.inventory.items.get("bones", 0) <= 0:
+            self.ui.show_message("You don't have any bones to bury.")
+            return
+        
+        self.player.inventory.remove_item("bones", 1)
+        prayer_xp = 4
+        self._award_xp("prayer", prayer_xp, self.player.rect.centerx, self.player.rect.top)
+        self.ui.show_message("You buried a bone.")
 
             
     def handle_events(self):
@@ -753,6 +786,19 @@ class GameManager:
         return obstacles
 
     def update(self, dt):
+        # Handle death fade and respawn transition
+        if self.ui.is_fading:
+            current_time = pygame.time.get_ticks()
+            elapsed = current_time - self.ui.fade_start_time
+            if elapsed >= self.ui.fade_duration:
+                # Fade complete: respawn
+                self._handle_player_respawn()
+                self.ui.is_fading = False
+            # Continue updating during fade, but pause certain actions
+            self.camera.update(self.player)
+            self.ui.update()
+            return
+        
         if self.player.hp > 0:
             obstacles = self._get_solid_obstacles()
             if not self.ui.show_crafting:
@@ -866,8 +912,9 @@ class GameManager:
                             self.ui.show_message(f"Ranged missed {proj.target.name}!")
                     self.projectiles.remove(proj)
         else:
-            if not self.game_over:
-                self.game_over = True
+            # Player is dead: start fade and respawn sequence
+            if not self.ui.is_fading:
+                self._handle_player_death()
             
         self.camera.update(self.player)
         self.ui.update()
@@ -892,6 +939,16 @@ class GameManager:
         for entity in y_sorted:
             entity.draw(self.screen, self.camera)
         self.ui.draw(self.screen)
+        
+        # Draw death fade overlay if fading
+        if self.ui.is_fading:
+            current_time = pygame.time.get_ticks()
+            elapsed = current_time - self.ui.fade_start_time
+            fade_alpha = int((elapsed / self.ui.fade_duration) * 200)  # 0 to 200
+            overlay = pygame.Surface((self.screen.get_width(), self.screen.get_height()), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, fade_alpha))
+            self.screen.blit(overlay, (0, 0))
+        
         if self.game_over:
             overlay = pygame.Surface((self.screen.get_width(), self.screen.get_height()), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 160))

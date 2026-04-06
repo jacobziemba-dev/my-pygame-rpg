@@ -53,6 +53,11 @@ class UIManager:
         # {"pos": (x, y), "options": [{"label": str, "action": callable}]}
         self.context_menu = None
 
+        # Death fade animation state
+        self.is_fading = False
+        self.fade_start_time = 0
+        self.fade_duration = 600  # milliseconds
+
     def show_context_menu(self, pos, options):
         self.context_menu = {"pos": pos, "options": options}
 

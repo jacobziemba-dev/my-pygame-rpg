@@ -15,6 +15,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Unequip flow implemented**: right-click equipped items in inventory and choose **Remove**. If inventory has no free slot, removal is blocked with a message.
 - **Graceful terminal stop**: stopping with Ctrl+C exits cleanly without traceback spam.
 - **XP drop messages implemented**: yellow floating XP text now appears near the player for XP gains (gathering, crafting, station collection, farming, combat hits, kills, and defense XP on damage taken).
+- **Safe death/respawn system**: when HP ≤ 0, screen fades to black over 600ms, then player respawns at bank spawn with full HP, clean combat state, and all items/equipment intact (RuneScape-style safe death). Shows "You died!" and "You have been recovered!" messages.
+- **Bones-to-Prayer bury action**: right-click bones in inventory and select "Bury Bone" to consume 1 bone and award +4 Prayer XP with floating XP feedback.
 
 ## Vision: A RuneScape-Inspired RPG
 
@@ -297,14 +299,14 @@ Ordered by RS-authenticity impact. Do these in order when possible.
 - [x] **XP drop messages** — RS-style "+25 Woodcutting" yellow text floating upward near the player on every XP gain (distinct from hit splats; use same fade/drift system)
 - [x] **Level-gated equipment** — iron_sword requires Attack Lv.5; iron_armor requires Defense Lv.10; iron_axe/pickaxe require Attack Lv.5. Show "You need Attack Lv.X to wield this." message
 - [x] **Unequip system** — right-clicking an equipped item in the inventory shows "Remove" option; unequips back to inventory
-- [ ] **Respawn on death** — player dies → fades to black → respawns at bank spawn point with all items kept (RS "safe death" mode). Reset HP to full.
+- [x] **Respawn on death** — player dies → fades to black → respawns at bank spawn point with all items kept (RS "safe death" mode). Reset HP to full.
 - [ ] **Item tier progression** — add Steel tier (requires Smithing Lv.20+) above Iron. Steel sword, steel armor, steel axe/pickaxe. Each tier is a meaningful power step.
 
 #### Economy
 
 - [ ] **Gold currency** — coins stack in inventory; displayed separately in HUD. Enemies already drop coins — wire them up as a real currency value.
 - [ ] **Shop / general store** — NPC near spawn. Right-click → "Trade". Sells: bronze/iron tools, arrows, bread, seeds. Buys: gathered resources for coins. Uses the context menu system.
-- [ ] **Bones → Prayer XP** — right-click bones in inventory → "Bury" → +4.5 Prayer XP (RS value). Adds Prayer as a real skill.
+- [x] **Bones → Prayer XP** — right-click bones in inventory → "Bury" → +4 Prayer XP. Adds Prayer as a real skill.
 
 #### UI / Inventory
 

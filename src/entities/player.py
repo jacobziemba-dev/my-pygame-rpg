@@ -372,3 +372,17 @@ class Player(Entity):
         if item_name == "shortbow" and self.combat_mode == "ranged" and not self.has_bow():
             self.set_combat_mode("melee")
         return True, f"Removed {item_name.replace('_', ' ').title()}."
+
+    def reset_after_death(self):
+        """Reset player state after safe death/respawn."""
+        # Clear all action/combat state
+        self.current_action = None
+        self.action_target = None
+        self.action_timer = 0
+        self.target_destination = None
+        self.interaction_target = None
+        self.waypoints = []
+        
+        # Restore HP and reset defensive state
+        self.hp = self.max_hp
+        self.last_hit_time = 0
