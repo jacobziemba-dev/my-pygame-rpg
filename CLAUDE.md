@@ -39,21 +39,24 @@ Requires `pygame-ce>=2.5.0`. No test suite — all testing is manual by running 
 
 ## Key Controls
 
-| Key               | Action                                        |
-| ----------------- | --------------------------------------------- |
-| Left-click ground | Move to point (primary input)                 |
-| Left-click entity | Interact: gather, attack, bank, open station  |
-| WASD / Arrow Keys | Move player (fallback)                        |
-| E                 | Interact with nearby object                   |
-| C                 | Open hand-crafting menu                       |
-| I                 | Open inventory                                |
-| K                 | Open skills panel                             |
-| Space             | Attack nearest enemy                          |
-| M                 | Toggle melee / ranged combat mode             |
-| Tab               | Open / close combat style panel               |
-| 1–9               | Activate hotbar slot                          |
-| F5 / F9           | Save / Load                                   |
-| F3                | Toggle FPS display                            |
+| Key / Input        | Action                                                      |
+| ------------------ | ----------------------------------------------------------- |
+| Left-click ground  | Move to point (primary input)                               |
+| Left-click entity  | Default action: gather, attack, open bank/station, pick up  |
+| Right-click world  | RS-style context menu ("Chop Tree", "Attack Enemy", etc.)   |
+| Right-click inv    | Context menu: Use/Equip, Drop, Examine                      |
+| ESC                | Close context menu / close open panels                      |
+| WASD / Arrow Keys  | Move player (fallback — cancels click-to-move)              |
+| E                  | Interact with nearby object                                 |
+| C                  | Open hand-crafting menu                                     |
+| I                  | Open inventory                                              |
+| K                  | Open skills panel                                           |
+| Space              | Attack nearest enemy                                        |
+| M                  | Toggle melee / ranged combat mode                           |
+| Tab                | Open / close combat style panel                             |
+| 1–9                | Activate hotbar slot                                        |
+| F5 / F9            | Save / Load                                                 |
+| F3                 | Toggle FPS display                                          |
 
 ---
 
@@ -82,7 +85,7 @@ while running:
 All drawable objects extend `Entity` (base class with sprite/animation support).
 
 - **player.py** — Click-to-move with waypoint navigation, keyboard fallback, inventory, skills, HP, equipment, attack/defense. `combat_mode` ("melee"/"ranged") and `combat_style` drive XP routing. `set_combat_mode()`, `set_combat_style()`, `get_xp_skill_for_hit()` are the key methods. `has_bow()` remains a utility check.
-- **enemy.py** — Chase AI within 250px aggro range, HP bar above sprite.
+- **enemy.py** — Three typed enemies (goblin/skeleton/guard). Each has `name`, `combat_level`, `hp`, `defense_level`, `max_hit`, `speed`, `aggro_range`, `drops`, `respawn_time`, `xp_reward`, `spawn_x/y`. HP bar appears only after first hit. Name + "(lvl X)" label always visible above sprite.
 - **resource_node.py** — Gatherable world objects (trees, rocks, iron_rock, bushes, fishing_spots). Each has: HP (hits to deplete), tool requirement, drop yield, respawn timer, min skill level. Depleted nodes are passable.
 - **resource_item.py** — Items dropped on the ground (from enemies or player drop). Auto-collected on click or nearby walk.
 - **projectile.py** — Arrow projectiles spawned every 1000ms tick when `player.combat_mode == "ranged"` and a bow is equipped. Travels to target, applies damage + XP (routed via `get_xp_skill_for_hit()`) on collision.
@@ -110,11 +113,12 @@ Single `UIManager` class. Renders all HUD and menus. Key features:
 - **Crafting menu** (C) — hand-crafted recipes only; shows correct skill level requirement per recipe
 - **Bank UI** — dual-pane (player inventory left, bank right); left-click to deposit/withdraw; T to deposit all
 - **Station menu** — shown when interacting with furnace/workbench/stove; checks the recipe's actual skill level
-- **Hit splats** — floating red damage numbers over enemies; fade and drift upward over 800ms
+- **Hit splats** — floating damage numbers over enemies; red for hits, blue "0" for misses (RS splash); fade and drift upward over 800ms. `add_hit_splat(damage, wx, wy, camera, is_miss=False)`
 - **Message bar** — centered yellow text at top for action feedback (3-second duration)
 - **Hotbar** — 9 slots bottom-center (48×48px each). Slots hold style shortcuts, `"toggle_combat"`, or item names. Activated by 1–9 keys. Slot 1=TGL, 2=ACC, 3=AGG, 4=DEF, 5=RAP, 6=LNG by default; slots 7–9 empty.
 - **Combat tab** (`Tab`) — small overlay above hotbar showing current mode and style selector with XP hints per style. `[M]` toggles melee/ranged mode.
 - **Control hints** — bottom-right corner key reminders
+- **Right-click context menu** — RS-style popup on right-click anywhere in the world. Shows verb-colored options (gold verb + white target, e.g. "Chop Tree", "Attack Enemy", "Walk here"). Left-click an option to execute; click elsewhere or press ESC to dismiss. Also shown on right-click of inventory items ("Use", "Drop", "Examine"). Rendered by `UIManager`: `show_context_menu(pos, options)`, `handle_context_menu_click(pos)`, `_draw_context_menu(surface)`.
 
 ---
 
@@ -165,7 +169,8 @@ Single `UIManager` class. Renders all HUD and menus. Key features:
 |Melee hit (auto or Space) — Accurate style|+5 Attack|
 |Melee hit (auto or Space) — Aggressive style|+5 Strength|
 |Melee hit (auto or Space) — Defensive style|+5 Defense|
-|Enemy kill|+20 Constitution (always) + +20 to active style's primary skill|
+|Enemy kill — combat skill|+`enemy.xp_reward` to active style's primary skill (13 goblin → 88 guard)|
+|Enemy kill — Constitution|+`enemy.xp_reward // 3` (always; goblin=4, skeleton=16, guard=29)|
 |Strength level-up bonus|+2 base_attack|
 |Constitution level-up bonus|+10 max_hp|
 |Ranged hit (arrow) — Accurate/Rapid style|+4 Ranged|
@@ -178,15 +183,21 @@ Single `UIManager` class. Renders all HUD and menus. Key features:
 
 ## Combat System
 
-- **Melee**: 1000ms auto-attack tick when `player.current_action == "attacking"` and combat falls to the melee branch. Uses `player.rect.inflate(80, 80)` (~56px reach) to check contact. Damage = `player.get_attack()`. XP routed via `player.get_xp_skill_for_hit()`.
-- **Ranged**: Fires when `player.combat_mode == "ranged"` **AND** `player.has_bow()`. Spawns a `Projectile` toward target every 1000ms within `RANGED_ATTACK_RANGE = 250px`. Requires arrows in inventory. XP routed via `get_xp_skill_for_hit()`.
+- **Melee**: 1000ms auto-attack tick when `player.current_action == "attacking"` and combat falls to the melee branch. Uses `player.rect.inflate(80, 80)` (~56px reach) to check contact. Damage = `player.get_attack()`. All hits go through `_roll_hit()` for miss chance. XP routed via `player.get_xp_skill_for_hit()`.
+- **Ranged**: Fires when `player.combat_mode == "ranged"` **AND** `player.has_bow()`. Spawns a `Projectile` toward target every 1000ms within `RANGED_ATTACK_RANGE = 250px`. Requires arrows in inventory. Miss checked on projectile impact via `_roll_hit()`.
+- **Miss mechanic**: `GameManager._roll_hit(base_damage, enemy)` → `(damage, is_hit)`. Hit chance = `clamp(0.50 + (attack_level − enemy.defense_level) × 0.025, 0.10, 0.95)`. Misses show a blue "0" hit splat (`add_hit_splat(..., is_miss=True)`).
 - **Combat branching**: Ranged requires BOTH `combat_mode == "ranged"` and `has_bow()`. If either is false, combat falls through to melee. Equipping a shortbow auto-sets `combat_mode = "ranged"`. Loading a save with shortbow equipped auto-detects ranged mode for backwards compatibility.
 - **Out-of-range chasing**: If enemy is out of melee or ranged reach during the tick, the player's `target_destination` is updated directly (without calling `set_target_destination`) so `current_action` stays `"attacking"` and the player chases the enemy without losing attack state.
-- **Space bar**: Instant-hits nearest enemy if within `inflate(80,80)` range, then sets up the auto-attack loop via `set_target_destination`. If out of range, pathfinds to the enemy to begin the loop.
+- **Space bar**: Instant-hits nearest enemy if within `inflate(80,80)` range with miss roll, then sets up the auto-attack loop. If out of range, pathfinds to the enemy.
+- **Auto-retaliate**: When an enemy lands a hit on the player and `player.current_action is None`, the player automatically pathfinds to and attacks that enemy (classic RS default).
+- **Enemy AI**: Enemies chase player within their `aggro_range`. Collision damage = `random.randint(1, enemy.max_hit)` reduced by player defense (1s cooldown). Each enemy type has its own aggro range and speed.
+- **Enemy death**: `_kill_enemy(enemy)` removes the enemy, calls `_on_enemy_drops()` (type-specific drop table), `_on_enemy_defeated_xp()` (scales with `enemy.xp_reward`), and adds to `respawn_queue`.
+- **Enemy respawn**: `respawn_queue = [(respawn_at_ms, enemy_type, spawn_x, spawn_y)]`. Each tick in `update()`, expired entries spawn a new Enemy at the original spawn location.
+- **Enemy drops**: Defined per type in `ENEMY_TYPE_STATS["drops"]` as `[(item, min, max, chance)]`. All enemies drop bones (100%). Guards also drop coins (80%) and rarely iron_bar (10%).
+- **Kill XP**: `_on_enemy_defeated_xp(enemy)` awards `enemy.xp_reward` to the active combat skill and `xp_reward // 3` to Constitution. Scales from 13 XP (goblin) to 88 XP (guard).
 - **Combat styles**: `player.combat_style` controls XP routing. Melee: `accurate` (Attack XP), `aggressive` (Strength XP), `defensive` (Defense XP). Ranged: `accurate`/`rapid` (Ranged XP), `longrange` (Ranged + Defense XP).
 - **Mode/style switching**: `M` key toggles mode; `Tab` opens style selector panel; hotbar slots 1–6 also switch styles. `player.set_combat_mode()` resets style to mode default.
-- **Enemy AI**: Enemies chase player within 250px. Collide with player rect and deal 10 damage per collision (1-second cooldown on player side).
-- **Hit splats**: Red floating numbers appear above enemies when hit. Fade and drift upward over 800ms.
+- **Hit splats**: `add_hit_splat(damage, wx, wy, camera, is_miss=False)` — red for hits, blue for misses. Fade and drift upward over 800ms.
 - **Defense XP**: Player earns +3 Defense XP each time they successfully take damage.
 
 ---
@@ -209,11 +220,13 @@ Item icons: `assets/sprites/{item_name}.png` (32×32). The UI falls back to a 2-
 - **Data-driven crafting**: All recipes live in `recipes.json`. Add `"skill"` to route XP to the correct skill. Add `"station"` to require a workstation. No code changes needed for new recipes.
 - **Skill-level checks**: Both the UI (display) and the game logic (crafting, gathering) check `recipe.get("skill", "crafting")` to get the right skill level. Do not hardcode `crafting.level` for smithing/cooking/fletching recipes.
 - **Station XP**: When `_handle_station_input` starts processing, it sets `station.pending_recipe = recipe`. When the player collects output (`_interact` or click path in `player.py`), the game awards `recipe["xp"] × collected` to `recipe["skill"]` and clears `pending_recipe`.
+- **Right-click context menu**: `GameManager.show_world_context_menu(screen_pos)` detects the entity under the cursor via `_find_entity_at_world()`, builds a list of `{"label": str, "action": callable}` options, and passes them to `ui.show_context_menu()`. Left-clicking an option calls `ui.handle_context_menu_click()` which returns the stored callable. Any other click or ESC dismisses it. Inventory right-click goes through `_show_inventory_context_menu()`. Entity pathfinding is extracted to `_pathfind_to_entity(world_x, world_y, entity)`.
 - **Point-and-click interaction**: Clicking an entity pathfinds to the nearest walkable adjacent tile. Interaction triggers only on arrival at the final waypoint. Intermediate waypoints do not fire interactions.
 - **Waypoint movement**: `player.set_target_destination()` accepts an optional `waypoints` list. Player walks waypoints in order; only the last waypoint triggers interaction and snapping.
 - **Solid-object collision**: Axis-separated resolution via `resolve_collision_x` / `resolve_collision_y` (in `entity.py`). `GameManager._get_solid_obstacles()` returns active non-fishing ResourceNodes + stations + bank each frame.
 - **Y-sorted rendering**: Stations, enemies, bank, and player are sorted by `rect.bottom` before drawing. Ground-level objects (nodes, crops, projectiles) draw first without sorting.
-- **Hit splats**: `ui.add_hit_splat(damage, world_x, world_y, camera)` converts world coords to screen and appends to `ui.hit_splats`. Drawn each frame with fade-out alpha and upward drift. Removed in `update()` after `_splat_duration` (800ms).
+- **Hit splats**: `ui.add_hit_splat(damage, world_x, world_y, camera, is_miss=False)` converts world coords to screen. Red for hits, blue for misses. Drawn each frame with fade-out alpha and upward drift. Removed in `update()` after `_splat_duration` (800ms).
+- **Enemy types**: Defined entirely in `ENEMY_TYPE_STATS` in `settings.py`. Adding a new enemy type requires only a new dict entry there — no changes to `enemy.py` or `game_manager.py`. Then add it to `_generate_enemies()` with a count constant.
 
 ---
 
@@ -239,10 +252,15 @@ Use this to guide future development. Checked items are implemented.
 - [x] Combat style system (Accurate/Aggressive/Defensive melee; Accurate/Rapid/Longrange ranged)
 - [x] Hotbar (9 slots, 1–9 keys, default-populated with style shortcuts)
 - [x] Combat tab panel (Tab key) showing mode + style selector with XP hints
+- [x] Right-click context menu (RS-style: verb-colored options for all world entities + inventory items)
+- [x] Multiple enemy types — Goblin (lvl 2), Skeleton (lvl 13), Guard (lvl 22) with individual stats, drops, aggro ranges
+- [x] Enemy respawn — each type respawns at spawn location after type-specific delay (25–60s)
+- [x] Miss / splash mechanic — attacks can miss based on attack level vs enemy defense; blue "0" splat
+- [x] Auto-retaliate — player automatically attacks back when hit while idle
+- [x] Type-specific enemy drops — bones always, coins scaled to difficulty, guards can drop iron bars
 
 ### Next Priority Features
 
-- [ ] **More enemy types** — different sprites, HP, damage, drops, and XP rewards per enemy type (e.g. goblin, skeleton, guard)
 - [ ] **Item tier progression** — Bronze → Iron → Steel → Mithril. Each tier requires higher smithing level and gives better stats
 - [ ] **Unequip system** — clicking an equipped item should unequip it back to inventory
 - [ ] **Level-gated equipment** — iron_armor requires Defense Lv.10; iron_sword requires Attack Lv.5

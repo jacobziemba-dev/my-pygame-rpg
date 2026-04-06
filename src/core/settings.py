@@ -31,4 +31,51 @@ NUM_CHESTS = 5
 
 # Combat settings
 RANGED_ATTACK_RANGE = 250  # px; used when bow is equipped
-NUM_ENEMIES = 15
+
+# Enemy type definitions
+# drops: list of (item_name, min_amount, max_amount, chance)
+ENEMY_TYPE_STATS = {
+    "goblin": {
+        "name": "Goblin",
+        "combat_level": 2,
+        "hp": 5,
+        "defense_level": 1,
+        "max_hit": 1,
+        "speed": 1.8,
+        "aggro_range": 200,
+        "color": (100, 140, 50),
+        "drops": [("bones", 1, 1, 1.0), ("coins", 1, 3, 0.6)],
+        "respawn_time": 25000,
+        "xp_reward": 13,
+    },
+    "skeleton": {
+        "name": "Skeleton",
+        "combat_level": 13,
+        "hp": 21,
+        "defense_level": 6,
+        "max_hit": 4,
+        "speed": 2.2,
+        "aggro_range": 280,
+        "color": (215, 210, 190),
+        "drops": [("bones", 1, 1, 1.0), ("coins", 3, 8, 0.4)],
+        "respawn_time": 45000,
+        "xp_reward": 50,
+    },
+    "guard": {
+        "name": "Guard",
+        "combat_level": 22,
+        "hp": 35,
+        "defense_level": 16,
+        "max_hit": 6,
+        "speed": 2.0,
+        "aggro_range": 180,
+        "color": (60, 70, 150),
+        "drops": [("bones", 1, 1, 1.0), ("coins", 8, 20, 0.8), ("iron_bar", 1, 1, 0.1)],
+        "respawn_time": 60000,
+        "xp_reward": 88,
+    },
+}
+
+NUM_GOBLINS   = 8
+NUM_SKELETONS = 4
+NUM_GUARDS    = 3

@@ -51,6 +51,7 @@ class GameManager:
 
         self.crops = []
         self.recipe_manager = RecipeManager()
+        self.respawn_queue = []  # [(respawn_at_ms, enemy_type, spawn_x, spawn_y)]
 
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
         self.ui = UIManager(self.player)
@@ -89,10 +90,11 @@ class GameManager:
             self.resources.append(ResourceNode(rx, ry, "fishing_spot", 25, "rod", "raw_fish", hp=3, respawn_time=20000, min_level=1))
 
     def _generate_enemies(self):
-        for _ in range(NUM_ENEMIES):
-            ex = random.randint(50, MAP_WIDTH - 50)
-            ey = random.randint(50, MAP_HEIGHT - 50)
-            self.enemies.append(Enemy(ex, ey))
+        for etype, count in [("goblin", NUM_GOBLINS), ("skeleton", NUM_SKELETONS), ("guard", NUM_GUARDS)]:
+            for _ in range(count):
+                ex = random.randint(50, MAP_WIDTH - 50)
+                ey = random.randint(50, MAP_HEIGHT - 50)
+                self.enemies.append(Enemy(ex, ey, etype))
 
     def _restart(self):
         self.game_over = False
@@ -102,6 +104,7 @@ class GameManager:
         self.enemies = []
         self._generate_enemies()
         self.projectiles = []
+        self.respawn_queue = []
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
         self.ui = UIManager(self.player)
         self.action_manager = ActionManager(self.ui)
@@ -118,54 +121,162 @@ class GameManager:
             
         pygame.quit()
 
-    def handle_world_click(self, pos, button):
-        # Convert screen pos to world pos
-        world_x = pos[0] + self.camera.camera_rect.x
-        world_y = pos[1] + self.camera.camera_rect.y
-        
+    def _find_entity_at_world(self, world_x, world_y):
+        """Return the topmost entity at world coordinates, or None."""
         click_rect = pygame.Rect(world_x - 5, world_y - 5, 10, 10)
-        clicked_entity = None
-        
-        # Check if an entity was clicked
-        # Resources / Items
         for item in self.resources:
             if click_rect.colliderect(item.rect):
-                clicked_entity = item
-                break
-                
-        # Enemies
-        if not clicked_entity:
-            for enemy in self.enemies:
-                if click_rect.colliderect(enemy.rect):
-                    clicked_entity = enemy
-                    break
-                    
-        # Bank
-        if not clicked_entity:
-            if click_rect.colliderect(self.bank.rect):
-                clicked_entity = self.bank
-                
-        # Stations
-        if not clicked_entity:
-            for station in self.stations:
-                if click_rect.colliderect(station.rect):
-                    clicked_entity = station
-                    break
-                    
-        # Crops
-        if not clicked_entity:
-             for crop in self.crops:
-                 if click_rect.colliderect(crop.rect):
-                     clicked_entity = crop
-                     break
+                return item
+        for enemy in self.enemies:
+            if click_rect.colliderect(enemy.rect):
+                return enemy
+        if click_rect.colliderect(self.bank.rect):
+            return self.bank
+        for station in self.stations:
+            if click_rect.colliderect(station.rect):
+                return station
+        for crop in self.crops:
+            if click_rect.colliderect(crop.rect):
+                return crop
+        return None
 
+    def _pathfind_to_entity(self, world_x, world_y, entity=None):
         obstacles = self._get_solid_obstacles()
         path = find_path(
             (self.player.rect.centerx, self.player.rect.centery),
             (world_x, world_y),
             obstacles
         )
-        self.player.set_target_destination(world_x, world_y, target_entity=clicked_entity, waypoints=path or None)
+        self.player.set_target_destination(world_x, world_y, target_entity=entity, waypoints=path or None)
+
+    def handle_world_click(self, pos, button):
+        # Convert screen pos to world pos
+        world_x = pos[0] + self.camera.camera_rect.x
+        world_y = pos[1] + self.camera.camera_rect.y
+        entity = self._find_entity_at_world(world_x, world_y)
+        self._pathfind_to_entity(world_x, world_y, entity)
+
+    def show_world_context_menu(self, screen_pos):
+        """Build and display an RS-style right-click context menu for the world position."""
+        world_x = screen_pos[0] + self.camera.camera_rect.x
+        world_y = screen_pos[1] + self.camera.camera_rect.y
+        entity = self._find_entity_at_world(world_x, world_y)
+
+        options = []
+
+        from src.entities.resource_item import ResourceItem
+        from src.entities.resource_node import ResourceNode
+        from src.entities.enemy import Enemy
+        from src.entities.bank import Bank
+        from src.entities.station import Station
+
+        if entity is None:
+            options.append({
+                "label": "Walk here",
+                "action": lambda: self._pathfind_to_entity(world_x, world_y)
+            })
+            options.append({
+                "label": "Examine Ground",
+                "action": lambda: self.ui.show_message("Just the ground.")
+            })
+        elif isinstance(entity, ResourceItem):
+            name = entity.resource_type.replace("_", " ").title()
+            _e = entity
+            options.append({
+                "label": f"Pick-up {name}",
+                "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e)
+            })
+            options.append({
+                "label": f"Examine {name}",
+                "action": lambda n=name: self.ui.show_message(f"A {n} on the ground.")
+            })
+        elif isinstance(entity, ResourceNode):
+            name = entity.node_type.replace("_", " ").title()
+            action_verb = {
+                "tree": "Chop", "rock": "Mine", "iron_rock": "Mine",
+                "bush": "Search", "fishing_spot": "Fish"
+            }.get(entity.node_type, "Gather")
+            _e = entity
+            options.append({
+                "label": f"{action_verb} {name}",
+                "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e)
+            })
+            options.append({
+                "label": f"Examine {name}",
+                "action": lambda n=name: self.ui.show_message(f"A {n} resource node.")
+            })
+        elif isinstance(entity, Enemy):
+            _e = entity
+            options.append({
+                "label": f"Attack {entity.name}",
+                "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e)
+            })
+            options.append({
+                "label": f"Examine {entity.name}",
+                "action": lambda e=_e: self.ui.show_message(
+                    f"A level {e.combat_level} {e.name}. Max hit: {e.max_hit}."
+                )
+            })
+        elif isinstance(entity, Bank):
+            _e = entity
+            options.append({
+                "label": "Use Bank",
+                "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e)
+            })
+            options.append({
+                "label": "Examine Bank",
+                "action": lambda: self.ui.show_message("The bank. Safely stores your items.")
+            })
+        elif isinstance(entity, Station):
+            name = entity.name
+            _e = entity
+            options.append({
+                "label": f"Use {name}",
+                "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e)
+            })
+            options.append({
+                "label": f"Examine {name}",
+                "action": lambda n=name: self.ui.show_message(f"A {n}. Used for crafting.")
+            })
+
+        self.ui.show_context_menu(screen_pos, options)
+
+    def _show_inventory_context_menu(self, screen_pos, item_index):
+        """RS-style right-click menu for an inventory item."""
+        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
+        if not (0 <= item_index < len(active_items)):
+            return
+        item_name, _ = active_items[item_index]
+        display_name = item_name.replace("_", " ").title()
+
+        options = []
+        # Use / Equip option
+        _n = item_name
+        options.append({
+            "label": f"Use {display_name}",
+            "action": lambda n=_n: self._inv_use_item(n)
+        })
+        # Drop option
+        options.append({
+            "label": f"Drop {display_name}",
+            "action": lambda n=_n: self._inv_drop_item(n)
+        })
+        options.append({
+            "label": f"Examine {display_name}",
+            "action": lambda dn=display_name: self.ui.show_message(f"It's a {dn}.")
+        })
+        self.ui.show_context_menu(screen_pos, options)
+
+    def _inv_use_item(self, item_name):
+        success, msg = self.player.use_item(item_name)
+        self.ui.show_message(msg if success else "Can't use that right now.")
+
+    def _inv_drop_item(self, item_name):
+        self.player.inventory.remove_item(item_name, 1)
+        drop_x = self.player.rect.centerx + random.randint(-20, 20)
+        drop_y = self.player.rect.centery + random.randint(-20, 20)
+        self.resources.append(ResourceItem(drop_x, drop_y, item_name))
+        self.ui.show_message(f"Dropped 1 {item_name.replace('_', ' ').title()}")
 
             
     def handle_events(self):
@@ -176,6 +287,17 @@ class GameManager:
                 if self.ui.show_skills:
                     self.ui.scroll_skills(event.y)
             elif event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN):
+                # Context menu: any click dismisses it; left-click executes hovered option
+                if event.type == pygame.MOUSEBUTTONDOWN and self.ui.context_menu:
+                    if event.button == 1:
+                        act = self.ui.handle_context_menu_click(event.pos)
+                        self.ui.context_menu = None
+                        if act:
+                            act()
+                    else:
+                        self.ui.context_menu = None
+                    continue
+
                 action, index = self.ui.handle_mouse_event(event)
                 if action == "use_item":
                     active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
@@ -198,17 +320,15 @@ class GameManager:
                         item_name, _ = active_items[index]
                         self.player.bank_inventory.remove_item(item_name, 1)
                         self.player.inventory.add_item(item_name, 1)
-                elif action == "drop_item":
-                    active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
-                    if 0 <= index < len(active_items):
-                        item_name, _ = active_items[index]
-                        self.player.inventory.remove_item(item_name, 1)
-                        drop_x = self.player.rect.centerx + random.randint(-20, 20)
-                        drop_y = self.player.rect.centery + random.randint(-20, 20)
-                        self.resources.append(ResourceItem(drop_x, drop_y, item_name))
-                        self.ui.show_message(f"Dropped 1 {item_name.replace('_', ' ').title()}")
+                elif action == "right_click_inventory":
+                    # Show RS-style context menu for hovered inventory slot
+                    if event.type == pygame.MOUSEBUTTONDOWN and self.ui.show_inventory:
+                        rects = self.ui.get_inventory_slot_rects()
+                        for i, rect in enumerate(rects):
+                            if rect.collidepoint(event.pos):
+                                self._show_inventory_context_menu(event.pos, i)
+                                break
                 elif action == "craft_item":
-                    # For normal crafting menu
                     recipes = self.recipe_manager.get_handcrafted()
                     if 0 <= index < len(recipes):
                         recipe = recipes[index]
@@ -221,9 +341,14 @@ class GameManager:
                         else:
                             self.ui.show_message(result)
                 elif action is None and event.type == pygame.MOUSEBUTTONDOWN:
-                     if not (self.ui.show_inventory or self.ui.show_crafting or self.ui.active_bank or self.ui.show_skills or getattr(self.ui, 'active_station', None)):
-                         if event.button == 1: # Left click moves
-                             self.handle_world_click(event.pos, event.button)
+                    panels_open = (self.ui.show_inventory or self.ui.show_crafting or
+                                   self.ui.active_bank or self.ui.show_skills or
+                                   getattr(self.ui, 'active_station', None))
+                    if not panels_open:
+                        if event.button == 1:
+                            self.handle_world_click(event.pos, event.button)
+                        elif event.button == 3:
+                            self.show_world_context_menu(event.pos)
 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F3:
@@ -234,6 +359,10 @@ class GameManager:
                     continue
                 if self.game_over:
                     if event.key == pygame.K_r: self._restart()
+                    continue
+
+                if event.key == pygame.K_ESCAPE and self.ui.context_menu:
+                    self.ui.context_menu = None
                     continue
 
                 if self.ui.show_skills and event.key == pygame.K_ESCAPE:
@@ -480,28 +609,66 @@ class GameManager:
         else:
             self.ui.show_message("Need a hoe.")
 
-    def _on_enemy_defeated_xp(self):
-        """+20 Constitution always; +20 to combat style's primary/secondary skill per kill."""
+    def _roll_hit(self, base_damage, enemy):
+        """RS-like accuracy roll. Returns (damage, is_hit).
+        Hit chance = 50% + (attack_level - enemy_defense_level) * 2.5%, clamped 10–95%."""
+        atk_level = (self.player.skills.ranged.level
+                     if self.player.combat_mode == "ranged"
+                     else self.player.skills.attack.level)
+        def_level = getattr(enemy, 'defense_level', 1)
+        hit_chance = max(0.10, min(0.95, 0.50 + (atk_level - def_level) * 0.025))
+        if random.random() > hit_chance:
+            return 0, False
+        return base_damage, True
+
+    def _on_enemy_drops(self, enemy):
+        """Spawn drop items from enemy's drop table."""
+        for item_name, min_amt, max_amt, chance in enemy.drops:
+            if random.random() < chance:
+                amount = random.randint(min_amt, max_amt)
+                for _ in range(amount):
+                    drop_x = enemy.rect.centerx + random.randint(-16, 16)
+                    drop_y = enemy.rect.centery + random.randint(-16, 16)
+                    self.resources.append(ResourceItem(drop_x, drop_y, item_name))
+
+    def _kill_enemy(self, enemy):
+        """Handle all consequences of an enemy death."""
+        if enemy not in self.enemies:
+            return
+        self.enemies.remove(enemy)
+        self._on_enemy_drops(enemy)
+        self._on_enemy_defeated_xp(enemy)
+        self.respawn_queue.append((
+            pygame.time.get_ticks() + enemy.respawn_time,
+            enemy.enemy_type, enemy.spawn_x, enemy.spawn_y
+        ))
+        if self.player.action_target is enemy:
+            self.player.current_action = None
+            self.player.action_target = None
+
+    def _on_enemy_defeated_xp(self, enemy):
+        """Award XP on kill, scaled to enemy difficulty."""
         notes = []
-        # Constitution always
-        if self.player.skills.gain_xp("constitution", 20):
+        con_xp = max(1, enemy.xp_reward // 3)
+        combat_xp = enemy.xp_reward
+
+        if self.player.skills.gain_xp("constitution", con_xp):
             self.player.max_hp += 10
             self.player.hp = min(self.player.hp + 10, self.player.max_hp)
             notes.append("Constitution level up! +10 HP")
-        # Style-routed kill bonus
+
         primary, secondary = self.player.get_xp_skill_for_hit()
-        if self.player.skills.gain_xp(primary, 20):
+        if self.player.skills.gain_xp(primary, combat_xp):
             if primary == "strength":
                 self.player.base_attack += 2
                 notes.append("Strength level up! +2 ATK")
             else:
                 notes.append(f"{primary.capitalize()} level up!")
-        if secondary and self.player.skills.gain_xp(secondary, 10):
+        if secondary and self.player.skills.gain_xp(secondary, combat_xp // 2):
             notes.append(f"{secondary.capitalize()} level up!")
-        if notes:
-            self.ui.show_message("Enemy defeated! " + " ".join(notes))
-        else:
-            self.ui.show_message("Enemy defeated!")
+
+        base_msg = f"{enemy.name} defeated! (+{combat_xp} XP)"
+        self.ui.show_message(base_msg + (" " + " ".join(notes) if notes else ""))
 
     def _attack(self):
         """Space: instant-hit nearest enemy if adjacent, else pathfind to it."""
@@ -515,20 +682,21 @@ class GameManager:
                                                e.rect.centery - self.player.rect.centery))
         attack_rect = self.player.rect.inflate(80, 80)
         if attack_rect.colliderect(nearest.rect):
-            # Immediate hit
-            dmg = self.player.get_attack()
-            nearest.hp -= dmg
-            primary, secondary = self.player.get_xp_skill_for_hit()
-            self.player.skills.gain_xp(primary, 5)
-            if secondary:
-                self.player.skills.gain_xp(secondary, 2)
-            self.ui.add_hit_splat(dmg, nearest.rect.centerx, nearest.rect.top, self.camera)
-            self.ui.show_message(f"Hit enemy for {dmg}!")
-            if nearest.hp <= 0:
-                self.enemies.remove(nearest)
-                self.resources.append(ResourceItem(nearest.rect.x, nearest.rect.y, "wood"))
-                self._on_enemy_defeated_xp()
-                return
+            base_dmg = self.player.get_attack()
+            dmg, is_hit = self._roll_hit(base_dmg, nearest)
+            self.ui.add_hit_splat(dmg, nearest.rect.centerx, nearest.rect.top, self.camera, is_miss=not is_hit)
+            if is_hit:
+                nearest.hp -= dmg
+                primary, secondary = self.player.get_xp_skill_for_hit()
+                self.player.skills.gain_xp(primary, 5)
+                if secondary:
+                    self.player.skills.gain_xp(secondary, 2)
+                self.ui.show_message(f"Hit {nearest.name} for {dmg}!")
+                if nearest.hp <= 0:
+                    self._kill_enemy(nearest)
+                    return
+            else:
+                self.ui.show_message(f"Missed {nearest.name}!")
         # Set up auto-attack loop toward nearest enemy
         self.player.set_target_destination(
             nearest.rect.centerx, nearest.rect.centery, target_entity=nearest)
@@ -591,57 +759,70 @@ class GameManager:
                         # Melee branch
                         attack_rect = self.player.rect.inflate(80, 80)
                         if attack_rect.colliderect(enemy.rect):
-                            dmg = self.player.get_attack()
-                            enemy.hp -= dmg
-                            primary, secondary = self.player.get_xp_skill_for_hit()
-                            self.player.skills.gain_xp(primary, 5)
-                            if secondary:
-                                self.player.skills.gain_xp(secondary, 2)
-                            self.ui.add_hit_splat(dmg, enemy.rect.centerx, enemy.rect.top, self.camera)
-                            self.ui.show_message(f"Hit enemy for {dmg}!")
-                            if enemy.hp <= 0:
-                                self.enemies.remove(enemy)
-                                self.resources.append(ResourceItem(enemy.rect.x, enemy.rect.y, "wood"))
-                                self._on_enemy_defeated_xp()
-                                self.player.current_action = None
-                                self.player.action_target = None
+                            base_dmg = self.player.get_attack()
+                            dmg, is_hit = self._roll_hit(base_dmg, enemy)
+                            self.ui.add_hit_splat(dmg, enemy.rect.centerx, enemy.rect.top, self.camera, is_miss=not is_hit)
+                            if is_hit:
+                                enemy.hp -= dmg
+                                primary, secondary = self.player.get_xp_skill_for_hit()
+                                self.player.skills.gain_xp(primary, 5)
+                                if secondary:
+                                    self.player.skills.gain_xp(secondary, 2)
+                                self.ui.show_message(f"Hit {enemy.name} for {dmg}!")
+                                if enemy.hp <= 0:
+                                    self._kill_enemy(enemy)
+                            else:
+                                self.ui.show_message(f"Missed {enemy.name}!")
                         else:
                             # Enemy moved — keep attack state and chase them
                             self.player.target_destination = (enemy.rect.centerx, enemy.rect.centery)
                             self.player.waypoints = []
 
+            # Respawn queue — bring enemies back at their spawn locations
+            now_ms = pygame.time.get_ticks()
+            for entry in self.respawn_queue[:]:
+                if now_ms >= entry[0]:
+                    self.respawn_queue.remove(entry)
+                    self.enemies.append(Enemy(entry[2], entry[3], entry[1]))
+
             # Nodes updates (respawn ticks)
             for item in self.resources:
                 if isinstance(item, ResourceNode):
                     item.update()
-            
-            for enemy in self.enemies:
+
+            for enemy in self.enemies[:]:
                 enemy.update(self.player, dt, obstacles + [self.player.rect])
                 if enemy.rect.inflate(4, 4).colliderect(self.player.rect):
-                    if self.player.take_damage(10):
+                    dmg = random.randint(1, enemy.max_hit)
+                    if self.player.take_damage(dmg):
+                        actual = max(1, dmg - self.player.get_defense())
                         self.player.skills.gain_xp("defense", 3)
-                        self.ui.show_message("-10 HP!")
+                        self.ui.show_message(f"{enemy.name} hits you for {actual}!")
+                        # Auto-retaliate when idle
+                        if self.player.current_action is None and self.player.hp > 0:
+                            self._pathfind_to_entity(enemy.rect.centerx, enemy.rect.centery, enemy)
 
             for proj in self.projectiles[:]:
                 proj.update(dt)
                 if proj.hit:
                     if proj.target in self.enemies:
-                        proj.target.hp -= proj.damage
-                        primary, secondary = self.player.get_xp_skill_for_hit()
-                        leveled_up = self.player.skills.gain_xp(primary, 4)
-                        if secondary:
-                            self.player.skills.gain_xp(secondary, 2)
-                        self.ui.add_hit_splat(proj.damage, proj.target.rect.centerx, proj.target.rect.top, self.camera)
-                        self.ui.show_message(f"Ranged hit for {proj.damage}!")
-                        if leveled_up:
-                            lvl = getattr(self.player.skills, primary).level
-                            self.ui.show_message(f"{primary.capitalize()} level up! Now level {lvl}")
-                        if proj.target.hp <= 0:
-                            self.enemies.remove(proj.target)
-                            self.resources.append(ResourceItem(proj.target.rect.x, proj.target.rect.y, "wood"))
-                            self._on_enemy_defeated_xp()
-                            self.player.current_action = None
-                            self.player.action_target = None
+                        base_dmg = proj.damage
+                        dmg, is_hit = self._roll_hit(base_dmg, proj.target)
+                        self.ui.add_hit_splat(dmg, proj.target.rect.centerx, proj.target.rect.top, self.camera, is_miss=not is_hit)
+                        if is_hit:
+                            proj.target.hp -= dmg
+                            primary, secondary = self.player.get_xp_skill_for_hit()
+                            leveled_up = self.player.skills.gain_xp(primary, 4)
+                            if secondary:
+                                self.player.skills.gain_xp(secondary, 2)
+                            self.ui.show_message(f"Ranged hit {proj.target.name} for {dmg}!")
+                            if leveled_up:
+                                lvl = getattr(self.player.skills, primary).level
+                                self.ui.show_message(f"{primary.capitalize()} level up! Now level {lvl}")
+                            if proj.target.hp <= 0:
+                                self._kill_enemy(proj.target)
+                        else:
+                            self.ui.show_message(f"Ranged missed {proj.target.name}!")
                     self.projectiles.remove(proj)
         else:
             if not self.game_over:

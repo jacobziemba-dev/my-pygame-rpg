@@ -38,7 +38,10 @@ class SaveManager:
                 else { "class": "ResourceItem", "x": r.rect.x, "y": r.rect.y, "type": r.resource_type }
                 for r in resources
             ],
-            "enemies": [{"x": e.rect.x, "y": e.rect.y, "hp": e.hp} for e in enemies],
+            "enemies": [{"x": e.rect.x, "y": e.rect.y, "hp": e.hp,
+                          "enemy_type": getattr(e, 'enemy_type', 'goblin'),
+                          "spawn_x": getattr(e, 'spawn_x', e.rect.x),
+                          "spawn_y": getattr(e, 'spawn_y', e.rect.y)} for e in enemies],
             "crops": [
                 {
                     "x": c.rect.x, "y": c.rect.y, "type": c.crop_type,
@@ -122,8 +125,11 @@ class SaveManager:
         # load enemies
         enemies.clear()
         for e_data in data["enemies"]:
-            enemy = Enemy(e_data["x"], e_data["y"])
+            enemy_type = e_data.get("enemy_type", "goblin")
+            enemy = Enemy(e_data["x"], e_data["y"], enemy_type)
             enemy.hp = e_data["hp"]
+            enemy.spawn_x = e_data.get("spawn_x", e_data["x"])
+            enemy.spawn_y = e_data.get("spawn_y", e_data["y"])
             enemies.append(enemy)
 
         # load crops
@@ -156,3 +162,10 @@ class SaveManager:
                 gm.ui.hotbar_slots = (loaded + [None] * 9)[:9]
 
         return True
+
+
+
+
+
+
+        

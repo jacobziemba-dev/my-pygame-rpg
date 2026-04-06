@@ -45,6 +45,67 @@ class UIManager:
         ]
         self.show_combat_tab = False
 
+        # RS-style right-click context menu
+        # {"pos": (x, y), "options": [{"label": str, "action": callable}]}
+        self.context_menu = None
+
+    def show_context_menu(self, pos, options):
+        self.context_menu = {"pos": pos, "options": options}
+
+    def handle_context_menu_click(self, pos):
+        """Returns the action callable if an option was clicked, else None."""
+        if not self.context_menu:
+            return None
+        x, y = self._clamped_menu_pos()
+        for i, opt in enumerate(self.context_menu["options"]):
+            row_rect = pygame.Rect(x, y + 20 + i * 22, 200, 22)
+            if row_rect.collidepoint(pos):
+                return opt["action"]
+        return None
+
+    def _clamped_menu_pos(self):
+        if not self.context_menu:
+            return (0, 0)
+        x, y = self.context_menu["pos"]
+        n = len(self.context_menu["options"])
+        w, h = 200, 20 + n * 22
+        if x + w > SCREEN_WIDTH:
+            x = SCREEN_WIDTH - w
+        if y + h > SCREEN_HEIGHT:
+            y = SCREEN_HEIGHT - h
+        return (x, y)
+
+    def _draw_context_menu(self, surface):
+        if not self.context_menu:
+            return
+        x, y = self._clamped_menu_pos()
+        n = len(self.context_menu["options"])
+        w, row_h = 200, 22
+        h = 20 + n * row_h
+
+        bg = pygame.Surface((w, h), pygame.SRCALPHA)
+        bg.fill((20, 15, 10, 230))
+        surface.blit(bg, (x, y))
+        pygame.draw.rect(surface, (120, 90, 40), (x, y, w, h), 1)
+
+        header = self.small_font.render("Choose option", True, (255, 255, 255))
+        surface.blit(header, (x + 6, y + 3))
+
+        mx, my = pygame.mouse.get_pos()
+        for i, opt in enumerate(self.context_menu["options"]):
+            ry = y + 20 + i * row_h
+            row_rect = pygame.Rect(x, ry, w, row_h)
+            if row_rect.collidepoint(mx, my):
+                pygame.draw.rect(surface, (60, 50, 25), row_rect)
+
+            label = opt["label"]
+            parts = label.split(" ", 1)
+            verb_surf = self.small_font.render(parts[0], True, (255, 215, 0))
+            surface.blit(verb_surf, (x + 6, ry + 3))
+            if len(parts) > 1:
+                target_surf = self.small_font.render(parts[1], True, (210, 210, 190))
+                surface.blit(target_surf, (x + 6 + verb_surf.get_width() + 4, ry + 3))
+
     def _load_item_sprites(self):
         # We'll try to load sprites for any item that might exist in inventory
         item_types = ["wood", "stone", "sword", "iron_ore", "iron_bar", "iron_sword", 
@@ -64,11 +125,13 @@ class UIManager:
                 except:
                     pass
 
-    def add_hit_splat(self, damage, world_x, world_y, camera):
-        """Spawn a floating damage number above a hit position."""
+    def add_hit_splat(self, damage, world_x, world_y, camera, is_miss=False):
+        """Spawn a floating damage number above a hit position.
+        is_miss=True shows a blue '0' (RS-style splash)."""
         screen_x = world_x - (camera.camera_rect.x if camera else 0)
         screen_y = world_y - (camera.camera_rect.y if camera else 0)
-        self.hit_splats.append([str(damage), screen_x, screen_y, pygame.time.get_ticks()])
+        color = (100, 160, 255) if is_miss else (255, 50, 50)
+        self.hit_splats.append([str(damage), screen_x, screen_y, pygame.time.get_ticks(), color])
 
     def show_message(self, text):
         self.message = text
@@ -121,9 +184,10 @@ class UIManager:
         surface.blit(hp_text, (hp_x, hp_y - 20))
 
         # Draw control hints (bottom-right)
-        hints = ["[I] Inventory", "[E] Interact", "[Space] Attack", "[C] Craft",
-                 "[Enter] Use/Equip", "[F] Farm", "[K] Skills",
-                 "[Tab] Combat", "[M] Mode", "[1-9] Hotbar",
+        hints = ["Left-click: Move/Interact", "Right-click: Options menu",
+                 "[I] Inventory", "[C] Craft", "[K] Skills",
+                 "[Space] Attack nearest", "[Tab] Combat tab",
+                 "[M] Toggle mode", "[1-9] Hotbar",
                  "[F5] Save", "[F9] Load"]
         hint_x = surface.get_width() - 140
         hint_y = surface.get_height() - len(hints) * 18 - 64  # above hotbar
@@ -133,12 +197,14 @@ class UIManager:
 
         # Draw floating hit splats
         now = pygame.time.get_ticks()
-        for text, sx, sy, spawn in self.hit_splats:
+        for splat in self.hit_splats:
+            text, sx, sy, spawn = splat[0], splat[1], splat[2], splat[3]
+            color = splat[4] if len(splat) > 4 else (255, 50, 50)
             age = now - spawn
             progress = age / self._splat_duration
             offset_y = int(progress * 30)  # float upward 30px over lifetime
             alpha = max(0, int(255 * (1.0 - progress)))
-            splat_surf = self.font.render(text, True, (255, 50, 50))
+            splat_surf = self.font.render(text, True, color)
             splat_surf.set_alpha(alpha)
             surface.blit(splat_surf, (int(sx) - splat_surf.get_width() // 2, int(sy) - 20 - offset_y))
 
@@ -157,6 +223,9 @@ class UIManager:
         self._draw_hotbar(surface)
         if self.show_combat_tab:
             self._draw_combat_tab(surface)
+
+        # Context menu draws on top of everything
+        self._draw_context_menu(surface)
 
         # Draw Message
         if self.message:
@@ -272,13 +341,8 @@ class UIManager:
                         if rect.collidepoint(event.pos):
                             self.crafting_index = i
                             return "craft_item", i
-            elif event.button == 3: # Right click
-                if self.show_inventory:
-                    rects = self.get_inventory_slot_rects()
-                    for i, rect in enumerate(rects):
-                        if rect.collidepoint(event.pos):
-                            self.inventory_index = i
-                            return "drop_item", i
+            elif event.button == 3: # Right click — context menu handled in game_manager
+                return "right_click_inventory", -1
         return None, None
 
     def _draw_station_menu(self, surface):

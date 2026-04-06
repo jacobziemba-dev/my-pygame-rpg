@@ -1,3 +1,4 @@
+import sys
 import pygame
 
 class Camera:
@@ -19,3 +20,4 @@ class Camera:
         
     def apply(self, entity_rect):
         return entity_rect.move(-self.camera_rect.x, -self.camera_rect.y)
+

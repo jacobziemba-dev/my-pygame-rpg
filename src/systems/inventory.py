@@ -1,3 +1,9 @@
+import sys
+from tkinter import ANCHOR
+
+import pygame
+
+
 class Inventory:
     def __init__(self):
         self.items = {
@@ -32,3 +38,10 @@ class Inventory:
         for item, amount in recipe["outputs"].items():
             self.add_item(item, amount)
         return True, recipe["xp"]
+
+
+
+
+
+
+        
