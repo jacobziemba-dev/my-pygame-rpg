@@ -6,23 +6,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Vision: A RuneScape-Inspired RPG
 
-This game is a **top-down 2D RPG built with pygame-ce**, designed to feel and play like **Old School RuneScape (OSRS)**. Every design decision should be made with that reference in mind.
+This game is a **top-down 2D RPG built with pygame-ce**, designed to feel and play like **Old School RuneScape (OSRS)**. **Every design decision — controls, combat, UI, progression, economy — must be made with OSRS as the reference.** When in doubt, ask: "Does this feel like RuneScape?" If yes, do it. If not, rethink it.
 
 ### What "RuneScape feel" means for this project
 
-- **Click-to-move**: The player navigates by clicking on the world. WASD is a fallback but the primary input is mouse. Pathfinding (A*) is already implemented.
-- **Skill grinding**: Players gain XP by doing repetitive actions (chop trees, mine rocks, fight enemies, cook food, smith bars). Levels gate higher-tier content. The grind *is* the game.
-- **XP bars and level-up feedback**: Every skill shows a gold XP bar. Level-ups are celebrated with a message. The player always knows how far they are from the next level.
-- **Inventory + bank**: 28-slot style inventory (currently uncapped but should feel limited). Bank stores items long-term. Players should regularly run to the bank.
-- **Gathering → Processing → Equipping loop**: Chop logs → smith bars → craft gear → equip → fight harder enemies. This loop is the core progression.
-- **Numbers and feedback**: Hit splats (red damage numbers) appear over enemies. XP gains are shown in messages. The player always has feedback on what they did.
-- **Runescape aesthetics**: Dark background, gold UI text, tile-based world, HP bar in green/red, brown/tan inventory panels. Fonts are small and clean. No flashy effects — functional and nostalgic.
+- **Right-click context menus everywhere**: Right-clicking any entity in the world shows a RS-style dropdown with verb-colored options ("Attack Goblin", "Chop Tree", "Walk here"). This is already implemented and must be maintained for all new entities.
+- **Click-to-move as the primary input**: The player navigates by clicking on the world. WASD is a fallback only. Pathfinding (A*) is already implemented. New movement or interaction features should always default to mouse-driven.
+- **Tick-based combat**: Attacks fire on a 1000ms tick, not in real time. No button mashing. The player clicks an enemy and watches the numbers roll. This pacing is intentional and RS-authentic.
+- **Miss/splash system**: Attacks can miss based on accuracy vs enemy defense. Low-level players vs high-level enemies should miss often. Blue "0" splats on miss, red numbers on hit — exactly like OSRS.
+- **Auto-retaliate**: When an enemy hits the player and the player is idle, automatically fight back. This is the RS default and must always be on.
+- **Skill grinding**: Players gain XP by doing repetitive actions (chop trees, mine rocks, fight enemies, cook food, smith bars). Levels gate higher-tier content. The grind *is* the game — do not short-circuit it.
+- **XP bars and level-up feedback**: Every skill shows a gold XP bar. Level-ups are celebrated with a message. XP drops should float near the player (not yet implemented — high priority).
+- **Inventory + bank**: 28-slot inventory (currently uncapped — enforce the cap). Bank stores items long-term. Players should regularly run to the bank. The inventory being full and needing to bank is a core gameplay loop.
+- **Gathering → Processing → Equipping loop**: Chop logs → smith bars → craft gear → equip → fight harder enemies. Every feature added should reinforce this loop.
+- **Enemy variety and scaling**: Different enemies have different combat levels, HP, max hits, drops, and aggro behavior. Weaker enemies near spawn, stronger ones further away. Players should feel progression pressure.
+- **Economy via drops and shops**: Enemies drop coins and items. A general store lets players buy supplies and sell loot. Gold is the universal currency. This gives purpose to grinding.
+- **Numbers and feedback**: Hit splats (red/blue) over enemies, XP drops near player, level-up messages, action feedback in the message bar. The player should always know exactly what happened.
+- **RS aesthetics**: Dark background, gold UI text, tile-based world, green/red HP bars, brown/tan inventory panels. Fonts small and clean. No particle explosions or screen shake — functional and nostalgic.
+
+### Design rules for all future features
+
+1. **If it exists in OSRS, model it after OSRS.** Don't invent a new system when RS already has a proven one.
+2. **Mouse first.** Every new interaction should be right-clickable with a context menu and left-click default action.
+3. **Skill gates everything.** New content should require skill levels to access. This creates natural progression.
+4. **Drops matter.** Every enemy should have a meaningful drop table. Coins, bones, and at least one unique drop per enemy type.
+5. **The grind is the point.** Don't make leveling too fast. The quadratic XP curve is intentional. Resist the urge to inflate XP rewards.
+6. **Feedback is mandatory.** Every action must produce visible feedback: a message, a splat, a floating number, or an animation.
 
 ### What this game is NOT
 
-- Not an action game (no real-time skill combos, no dodge-rolling)
-- Not a story-driven RPG (no cutscenes, minimal dialogue)
+- Not an action game (no real-time skill combos, no dodge-rolling, no stamina bars)
+- Not a story-driven RPG (no cutscenes, minimal dialogue — RS has almost none)
 - Not a platformer or shooter
+- Not a game where you hold down keys to fight — it's click-to-interact, tick-to-resolve
 
 ---
 
@@ -261,24 +277,38 @@ Use this to guide future development. Checked items are implemented.
 
 ### Next Priority Features
 
-- [ ] **Item tier progression** — Bronze → Iron → Steel → Mithril. Each tier requires higher smithing level and gives better stats
-- [ ] **Unequip system** — clicking an equipped item should unequip it back to inventory
-- [ ] **Level-gated equipment** — iron_armor requires Defense Lv.10; iron_sword requires Attack Lv.5
-- [ ] **More recipes** — at least 5 recipes per crafting skill; currently very sparse
-- [ ] **Minimap** — small world map in corner showing player position (classic RS feature)
-- [ ] **XP drop messages** — RS-style "+25 Woodcutting" text that floats near the player (distinct from hit splats)
-- [ ] **Inventory cap** — limit inventory to 28 slots (RS standard); force player to bank
-- [ ] **Item weight / encumbrance** — optional RS3 mechanic
-- [ ] **Respawn on death** — player dies → respawns at bank with items kept (or dropped, configurable)
-- [ ] **NPC dialogue** — simple right-click interact → text box (e.g. bank teller, shop)
-- [ ] **Shop / general store** — buy basic supplies, sell gathered resources for gold
-- [ ] **Gold currency** — enemies and shops use gold; gives economy structure
+Ordered by RS-authenticity impact. Do these in order when possible.
+
+#### Combat & Progression
+
+- [ ] **XP drop messages** — RS-style "+25 Woodcutting" yellow text floating upward near the player on every XP gain (distinct from hit splats; use same fade/drift system)
+- [ ] **Level-gated equipment** — iron_sword requires Attack Lv.5; iron_armor requires Defense Lv.10; iron_axe/pickaxe require Attack Lv.5. Show "You need Attack Lv.X to wield this." message
+- [ ] **Unequip system** — right-clicking an equipped item in the inventory shows "Remove" option; unequips back to inventory
+- [ ] **Respawn on death** — player dies → fades to black → respawns at bank spawn point with all items kept (RS "safe death" mode). Reset HP to full.
+- [ ] **Item tier progression** — add Steel tier (requires Smithing Lv.20+) above Iron. Steel sword, steel armor, steel axe/pickaxe. Each tier is a meaningful power step.
+
+#### Economy
+
+- [ ] **Gold currency** — coins stack in inventory; displayed separately in HUD. Enemies already drop coins — wire them up as a real currency value.
+- [ ] **Shop / general store** — NPC near spawn. Right-click → "Trade". Sells: bronze/iron tools, arrows, bread, seeds. Buys: gathered resources for coins. Uses the context menu system.
+- [ ] **Bones → Prayer XP** — right-click bones in inventory → "Bury" → +4.5 Prayer XP (RS value). Adds Prayer as a real skill.
+
+#### UI / Inventory
+
+- [ ] **Inventory cap** — hard limit of 28 slots. When full, show "Your inventory is full." and prevent picking up. Forces bank runs — core RS loop.
+- [ ] **Minimap** — small square map in top-right corner. Shows player dot (white), enemies (red dots), bank (yellow dot), resource nodes (green dots). Updates each frame.
+- [ ] **Item drop names** — text label under each ResourceItem on the ground showing the item name (RS style). Small font, white text with black shadow.
+
+#### World
+
+- [ ] **Tile map** — replace solid green background with proper grass/dirt/path tiles. Water tiles as impassable borders. Makes the world feel like RS.
+- [ ] **Zones by enemy difficulty** — goblins near spawn (safe area), skeletons mid-distance, guards further out. Player naturally progresses outward as they level up.
+- [ ] **NPC dialogue** — right-click NPC → "Talk-to" → simple text box overlay. Bank teller, shopkeeper. No branching trees needed — just flavor text + one action.
 
 ### Visual / Polish
 
-- [ ] Tile map with grass/dirt/water tiles instead of solid green background
-- [ ] Player sprite with proper RS-style top-down perspective
-- [ ] Animated resource nodes (tree sway, ore sparkle)
-- [ ] Sound effects (hit sounds, level-up jingle, gather sound)
-- [ ] Level-up visual effect (fireworks / glow flash)
+- [ ] Player sprite with RS-style top-down perspective (current placeholder is fine but RS aesthetic is small, top-down, slightly isometric-feeling)
+- [ ] Animated resource nodes (tree sway on chop hit, ore sparkle when mining)
+- [ ] Sound effects (hit sound on attack, level-up jingle, coin pickup clink, gather thud)
+- [ ] Level-up visual effect — gold flash + "Congratulations, you've reached level X!" overlay panel (classic RS style)
 - [ ] Item drop names visible on the ground (text label under ResourceItem)
