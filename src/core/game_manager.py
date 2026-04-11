@@ -50,7 +50,8 @@ class GameManager:
         self.crops = []
         self.respawn_queue = []
         self.recipe_manager = RecipeManager()
-        
+        self.ui.recipe_manager = self.recipe_manager
+
         # 4. Fixed entities (Snapped to grid)
         _hub_bank_x = PLAYER_START_X + 64
         _hub_bank_y = PLAYER_START_Y - 64 
@@ -578,15 +579,10 @@ class GameManager:
         elif action == "craft_item":
             recipes = self.recipe_manager.get_handcrafted()
             if 0 <= index < len(recipes):
-                recipe = recipes[index]
-                skill_name = recipe.get("skill", "crafting")
-                skill_level = getattr(self.player.skills, skill_name, self.player.skills.crafting).level
-                success, result = self.player.inventory.craft(recipe["name"], skill_level, self.recipe_manager)
-                if success:
-                    self._award_xp(skill_name, result)
-                    self.ui.show_message(f"{recipe['label']} crafted! (+{result} {skill_name.capitalize()} XP)")
-                else:
-                    self.ui.show_message(result)
+                self._try_hand_craft(recipes[index], 1)
+
+        elif action == "crafting_context":
+            self._show_crafting_context_menu(event.pos, index)
 
         elif action is None and event.type == pygame.MOUSEBUTTONDOWN:
             if not self.ui.is_pos_on_ui(event.pos):
@@ -661,6 +657,82 @@ class GameManager:
             elif event.type == pygame.KEYDOWN:
                 self._handle_keydown(event)
 
+    def _skill_display_name(self, skill_id):
+        sk = getattr(self.player.skills, skill_id, None)
+        if sk is not None:
+            return sk.name
+        return skill_id.replace("_", " ").title()
+
+    def _try_hand_craft(self, recipe, quantity=1):
+        skill_name = recipe.get("skill", "crafting")
+        skill_level = getattr(self.player.skills, skill_name, self.player.skills.crafting).level
+        out = self.player.inventory.craft(
+            recipe["name"], skill_level, self.recipe_manager, quantity=quantity
+        )
+        if not out[0]:
+            self.ui.show_message(out[1])
+            return
+        _, total_xp, count = out
+        self._award_xp(skill_name, total_xp)
+        disp = self._skill_display_name(skill_name)
+        label = recipe["label"]
+        if count == 1:
+            self.ui.show_message(f"You make {label}. (+{total_xp} {disp} XP)")
+        else:
+            self.ui.show_message(f"You make {count}× {label}. (+{total_xp} {disp} XP)")
+
+    def _craft_hand_make_all(self, recipe):
+        skill_name = recipe.get("skill", "crafting")
+        skill_level = getattr(self.player.skills, skill_name, self.player.skills.crafting).level
+        n = self.player.inventory.max_craftable_batches(recipe, skill_level, ignore_output_space=False)
+        if n <= 0:
+            self.ui.show_message("You don't have enough materials, or your inventory is too full.")
+            return
+        self._try_hand_craft(recipe, n)
+
+    def _show_crafting_context_menu(self, screen_pos, index):
+        recipes = self.recipe_manager.get_handcrafted()
+        if not (0 <= index < len(recipes)):
+            return
+        r = recipes[index]
+        name = r["label"]
+        self.ui.show_context_menu(
+            screen_pos,
+            [
+                {"label": f"Make 1 {name}", "action": lambda rec=r: self._try_hand_craft(rec, 1)},
+                {"label": f"Make 5 {name}", "action": lambda rec=r: self._try_hand_craft(rec, 5)},
+                {"label": f"Make 10 {name}", "action": lambda rec=r: self._try_hand_craft(rec, 10)},
+                {"label": f"Make All {name}", "action": lambda rec=r: self._craft_hand_make_all(rec)},
+            ],
+        )
+
+    def _start_station_recipe(self, station, recipe, batch_count):
+        """batch_count 1 = one batch; None = as many as materials allow (make all)."""
+        recipe_skill = recipe.get("skill", "crafting")
+        recipe_skill_level = getattr(self.player.skills, recipe_skill, self.player.skills.crafting).level
+        if recipe_skill_level < recipe["min_level"]:
+            disp = self._skill_display_name(recipe_skill)
+            self.ui.show_message(f"You need {disp} level {recipe['min_level']} to make that.")
+            return
+        max_b = self.player.inventory.max_craftable_batches(
+            recipe, recipe_skill_level, ignore_output_space=True
+        )
+        if max_b <= 0:
+            self.ui.show_message("You don't have enough materials.")
+            return
+        n = max_b if batch_count is None else min(int(batch_count), max_b)
+        if n <= 0:
+            self.ui.show_message("You don't have enough materials.")
+            return
+        for item, amount in recipe["inputs"].items():
+            self.player.inventory.remove_item(item, amount * n)
+        output_item = list(recipe["outputs"].keys())[0]
+        duration = recipe.get("duration", 2000)
+        station.pending_recipe = recipe
+        station.start_processing(list(recipe["inputs"].keys())[0], output_item, n, duration)
+        q = "item" if n == 1 else "items"
+        self.ui.show_message(f"You set to work. ({n} {q} in the queue.)")
+
     def _handle_crafting_input(self, event):
         if event.key == pygame.K_ESCAPE or event.key == pygame.K_c:
             self.ui.active_tab = None
@@ -669,18 +741,19 @@ class GameManager:
             if event.key == pygame.K_UP:
                 self.ui.crafting_index = max(0, self.ui.crafting_index - 1)
             elif event.key == pygame.K_DOWN:
-                self.ui.crafting_index = min(len(recipes) - 1, self.ui.crafting_index + 1)
-            elif event.key == pygame.K_RETURN:
+                self.ui.crafting_index = min(max(0, len(recipes) - 1), self.ui.crafting_index + 1)
+            elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 if 0 <= self.ui.crafting_index < len(recipes):
-                    recipe = recipes[self.ui.crafting_index]
-                    skill_name = recipe.get("skill", "crafting")
-                    skill_level = getattr(self.player.skills, skill_name, self.player.skills.crafting).level
-                    success, result = self.player.inventory.craft(recipe["name"], skill_level, self.recipe_manager)
-                    if success:
-                        self._award_xp(skill_name, result)
-                        self.ui.show_message(f"{recipe['label']} crafted! (+{result} {skill_name.capitalize()} XP)")
+                    mod = event.mod
+                    if mod & pygame.KMOD_SHIFT:
+                        self._try_hand_craft(recipes[self.ui.crafting_index], 5)
+                    elif mod & pygame.KMOD_CTRL:
+                        self._try_hand_craft(recipes[self.ui.crafting_index], 10)
                     else:
-                        self.ui.show_message(result)
+                        self._try_hand_craft(recipes[self.ui.crafting_index], 1)
+            elif event.key == pygame.K_a:
+                if 0 <= self.ui.crafting_index < len(recipes):
+                    self._craft_hand_make_all(recipes[self.ui.crafting_index])
 
     def _handle_inventory_input(self, event):
         active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
@@ -720,41 +793,19 @@ class GameManager:
 
     def _handle_station_input(self, event):
         station = self.ui.active_station
+        recipes = self.recipe_manager.get_for_station(station.station_type)
         if event.key == pygame.K_ESCAPE or event.key == pygame.K_e:
             self.ui.active_station = None
         elif event.key == pygame.K_UP:
             self.ui.station_index = max(0, self.ui.station_index - 1)
         elif event.key == pygame.K_DOWN:
-            recipes = self.recipe_manager.get_for_station(station.station_type)
-            self.ui.station_index = min(len(recipes) - 1, self.ui.station_index + 1)
-        elif event.key == pygame.K_RETURN:
-            recipes = self.recipe_manager.get_for_station(station.station_type)
+            self.ui.station_index = min(max(0, len(recipes) - 1), self.ui.station_index + 1)
+        elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
             if 0 <= self.ui.station_index < len(recipes):
-                recipe = recipes[self.ui.station_index]
-                # Start processing if we have items
-                can_craft = True
-                for item, amount in recipe["inputs"].items():
-                    if self.player.inventory.items.get(item, 0) < amount:
-                        self.ui.show_message(f"Need {amount} {item}!")
-                        can_craft = False
-                        break
-                
-                # Check min level against the recipe's actual skill
-                recipe_skill = recipe.get("skill", "crafting")
-                recipe_skill_level = getattr(self.player.skills, recipe_skill, self.player.skills.crafting).level
-                if recipe_skill_level < recipe["min_level"]:
-                    self.ui.show_message(f"Requires {recipe_skill.capitalize()} Lv.{recipe['min_level']}.")
-                    can_craft = False
-
-                if can_craft:
-                    for item, amount in recipe["inputs"].items():
-                        self.player.inventory.remove_item(item, amount)
-
-                    output_item = list(recipe["outputs"].keys())[0]
-                    duration = recipe.get("duration", 2000)
-                    station.pending_recipe = recipe
-                    station.start_processing(list(recipe["inputs"].keys())[0], output_item, 1, duration)
-                    self.ui.show_message(f"Started processing {output_item}...")
+                self._start_station_recipe(station, recipes[self.ui.station_index], 1)
+        elif event.key == pygame.K_a:
+            if 0 <= self.ui.station_index < len(recipes):
+                self._start_station_recipe(station, recipes[self.ui.station_index], None)
             
     def _handle_main_input(self, event):
         if getattr(self.ui, 'active_dialogue', None):

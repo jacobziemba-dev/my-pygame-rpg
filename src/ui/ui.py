@@ -608,12 +608,15 @@ class UIManager:
 
     def get_crafting_recipe_rects(self):
         rects = []
-        panel_w, panel_h = 300, 440
+        panel_w, outer_h = 300, 440
         panel_x = SCREEN_WIDTH - panel_w
-        panel_y = SCREEN_HEIGHT - panel_h + 30
-        list_top = panel_y + 40
-        
-        for i, recipe in enumerate(self.recipe_manager.get_all()):
+        outer_y = SCREEN_HEIGHT - outer_h
+        tab_h = 34
+        panel_y = outer_y + tab_h
+        panel_h = outer_h - tab_h
+        recipes = self.recipe_manager.get_handcrafted()
+        list_top = panel_y + 68
+        for i, recipe in enumerate(recipes):
             row_y = list_top + i * 22
             if row_y > panel_y + panel_h - 86:
                 break
@@ -743,6 +746,12 @@ class UIManager:
                     for i, rect in enumerate(equipped_rects):
                         if rect.collidepoint(event.pos):
                             return "right_click_inventory", i
+                elif self.active_tab == 'crafting':
+                    rects = self.get_crafting_recipe_rects()
+                    for i, rect in enumerate(rects):
+                        if rect.collidepoint(event.pos):
+                            self.crafting_index = i
+                            return "crafting_context", i
                 return None, None
         return None, None
 
@@ -754,9 +763,11 @@ class UIManager:
 
 
         # Header
-        title = self.font.render(f"{self.active_station.name} Menu", True, (255, 215, 0))
+        title = self.font.render(f"{self.active_station.name}", True, (255, 215, 0))
         surface.blit(title, (panel_x + 10, panel_y + 8))
-        controls = self.font.render("[ESC] Close  [↑↓] Select  [Enter] Process", True, (140, 140, 140))
+        controls = self.small_font.render(
+            "[ESC] Close   [↑↓] Select   [Enter] Make 1   [A] Make All", True, (140, 140, 140)
+        )
         surface.blit(controls, (panel_x + 10, panel_y + 28))
         pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + 48), (panel_x + panel_w, panel_y + 48))
 
@@ -768,14 +779,25 @@ class UIManager:
             row_y = list_top + i * 22
             if row_y > panel_y + panel_h - 86:
                 break
+            sk = recipe.get("skill", "crafting")
+            skill_level = getattr(self.player.skills, sk, self.player.skills.crafting).level
+            can_level = skill_level >= recipe["min_level"]
             can_items = all(self.player.inventory.items.get(k, 0) >= v for k, v in recipe["inputs"].items())
+            can_make = can_level and can_items
 
             if i == self.station_index:
                 pygame.draw.rect(surface, (60, 55, 15), (panel_x + 4, row_y - 2, panel_w - 8, 20))
 
-            name_color = (220, 220, 220) if can_items else (90, 90, 90)
-            status = "✓" if can_items else "✗ items"
-            status_color = (80, 200, 80) if can_items else (200, 80, 80)
+            name_color = (220, 220, 220) if can_level else (90, 90, 90)
+            if not can_level:
+                sk_obj = getattr(self.player.skills, sk, self.player.skills.crafting)
+                disp = sk_obj.name if sk_obj else sk.capitalize()
+                status = f"✗ {disp} {recipe['min_level']}"
+            elif not can_items:
+                status = "✗ items"
+            else:
+                status = "✓"
+            status_color = (80, 200, 80) if can_make else (200, 80, 80)
 
             label = f"{'>' if i == self.station_index else ' '} {recipe['label']}"
             surface.blit(self.font.render(label, True, name_color), (panel_x + 8, row_y))
@@ -801,18 +823,26 @@ class UIManager:
 
 
 
-        # Header
-        title = self.font.render("Hand Crafting", True, (255, 215, 0))
+        # Header (OSRS-style combined crafting / cooking / fletching list)
+        title = self.font.render("Crafting", True, (255, 215, 0))
         surface.blit(title, (panel_x + 10, panel_y + 8))
-        controls = self.font.render("[ESC] Close  [↑↓] Select  [Enter] Craft", True, (140, 140, 140))
-        surface.blit(controls, (panel_x + 10, panel_y + 28))
-        pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + 48), (panel_x + panel_w, panel_y + 48))
+        controls = self.small_font.render(
+            "[ESC] Close   [↑↓] Select   [Enter/Space] Make 1   [Shift+Enter] 5   [Ctrl+Enter] 10   [A] All",
+            True,
+            (140, 140, 140),
+        )
+        surface.blit(controls, (panel_x + 10, panel_y + 26))
+        hint2 = self.small_font.render(
+            "[LClick] Make 1   [RClick] Make menu (1 / 5 / 10 / All)", True, (120, 120, 120)
+        )
+        surface.blit(hint2, (panel_x + 10, panel_y + 42))
+        pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + 62), (panel_x + panel_w, panel_y + 62))
 
         # Filter out station recipes
         recipes = self.recipe_manager.get_handcrafted()
 
         # Recipe list
-        list_top = panel_y + 40
+        list_top = panel_y + 68
         for i, recipe in enumerate(recipes):
             row_y = list_top + i * 22
             if row_y > panel_y + panel_h - 86:
@@ -827,7 +857,8 @@ class UIManager:
 
             name_color = (220, 220, 220) if can_level else (90, 90, 90)
             if not can_level:
-                status = f"✗ {skill_name.capitalize()} Lv.{recipe['min_level']}"
+                sk_disp = getattr(self.player.skills, skill_name, self.player.skills.crafting).name
+                status = f"✗ {sk_disp} {recipe['min_level']}"
             elif not can_items:
                 status = "✗ items"
             else:
@@ -843,7 +874,8 @@ class UIManager:
         pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + panel_h - 76), (panel_x + panel_w, panel_y + panel_h - 76))
         if 0 <= self.crafting_index < len(recipes):
             r = recipes[self.crafting_index]
-            r_skill = r.get("skill", "crafting").capitalize()
+            _sk = r.get("skill", "crafting")
+            r_skill = getattr(self.player.skills, _sk, self.player.skills.crafting).name
             inputs_str = ",  ".join(f"{v}x {k.replace('_', ' ')}" for k, v in r["inputs"].items())
             outputs_str = ",  ".join(f"{v}x {k.replace('_', ' ')}" for k, v in r["outputs"].items())
             surface.blit(self.font.render(f"In:  {inputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 70))
