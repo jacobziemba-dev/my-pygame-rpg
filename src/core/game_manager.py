@@ -361,7 +361,7 @@ class GameManager:
 
     def _show_inventory_context_menu(self, screen_pos, item_index):
         """RS-style right-click menu for an inventory item."""
-        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
+        active_items = self._get_active_inventory(self.player.inventory, exclude_coins=True)
         if not (0 <= item_index < len(active_items)):
             return
         item_name, _ = active_items[item_index]
@@ -444,6 +444,211 @@ class GameManager:
         self.ui.show_message("You buried a bone.")
 
             
+    # ── Event helpers ──────────────────────────────────────────────────────────
+
+    def _get_active_inventory(self, source, exclude_coins=False):
+        """Return [(item, count)] for all items with count > 0 in *source* inventory."""
+        return [
+            (item, count)
+            for item, count in source.items.items()
+            if count > 0 and (not exclude_coins or item != "coins")
+        ]
+
+    def _execute_dialogue_action(self, action):
+        """Execute a named action triggered by a dialogue response."""
+        if action == "start_quest_bakers_assistant":
+            self.player.quest_manager.start_quest("bakers_assistant")
+        elif action == "complete_quest_bakers_assistant":
+            self.player.inventory.remove_item("egg", 1)
+            self.player.inventory.remove_item("milk", 1)
+            self.player.inventory.remove_item("wheat", 1)
+            self.player.quest_manager.complete_quest("bakers_assistant")
+            self._award_xp("cooking", 100, self.player.rect.centerx, self.player.rect.top)
+            self.ui.show_message("Quest Complete: The Baker's Assistant!")
+            baker_npc = next((n for n in self.npcs if n.name == "Baker"), None)
+            if baker_npc:
+                self.stations.append(Station(baker_npc.rect.right + 20, baker_npc.rect.top, "high_tier_stove", "Iron Stove"))
+
+    def _handle_dialogue_response(self, node_id, response_idx):
+        """Process a player's dialogue choice: check conditions, run action, advance node."""
+        node = self.ui.dialogue_manager.get_node(node_id)
+        response = node["responses"][response_idx]
+
+        condition = response.get("condition")
+        can_proceed = True
+        if condition and condition["type"] == "has_items":
+            for req_item, req_amt in condition.get("items", {}).items():
+                if self.player.inventory.items.get(req_item, 0) < req_amt:
+                    can_proceed = False
+                    break
+
+        if not can_proceed:
+            self.ui.show_message("You don't meet the requirements.")
+            return
+
+        r_action = response.get("action")
+        if r_action:
+            self._execute_dialogue_action(r_action)
+
+        next_node = response.get("next")
+        if next_node == "END":
+            self.ui.close_dialogue()
+        else:
+            self.ui.show_dialogue_node(next_node)
+
+    def _dispatch_ui_mouse_action(self, action, index, event):
+        """Route a UI mouse action string to the appropriate handler."""
+        if action == "next_dialogue":
+            if self.ui.active_dialogue.get("type", "linear") == "linear":
+                self.ui.active_dialogue["line_index"] += 1
+                if self.ui.active_dialogue["line_index"] >= len(self.ui.active_dialogue.get("lines", [])):
+                    self.ui.close_dialogue()
+
+        elif action == "dialogue_response":
+            node_id, response_idx = index
+            self._handle_dialogue_response(node_id, response_idx)
+
+        elif action == "use_item":
+            active_items = self._get_active_inventory(self.player.inventory, exclude_coins=True)
+            if 0 <= index < len(active_items):
+                item_name, _ = active_items[index]
+                success, msg = self.player.use_item(item_name)
+                self.ui.show_message(msg)
+
+        elif action == "deposit_item":
+            active_items = self._get_active_inventory(self.player.inventory)
+            if 0 <= index < len(active_items):
+                item_name, _ = active_items[index]
+                self.player.inventory.remove_item(item_name, 1)
+                self.player.bank_inventory.add_item(item_name, 1)
+
+        elif action == "withdraw_item":
+            active_items = self._get_active_inventory(self.player.bank_inventory)
+            if 0 <= index < len(active_items):
+                item_name, _ = active_items[index]
+                if self.player.inventory.add_item(item_name, 1):
+                    self.player.bank_inventory.remove_item(item_name, 1)
+                else:
+                    self.ui.show_message("Your inventory is full.")
+
+        elif action == "shop_buy_item":
+            shop_items = self._get_active_inventory(self.shop.inventory)
+            if 0 <= index < len(shop_items):
+                item_name, _ = shop_items[index]
+                price = self.shop.get_buy_price(item_name)
+                coins = self.player.inventory.get_item_count("coins")
+                if coins < price:
+                    self.ui.show_message("Not enough coins.")
+                elif not self.player.inventory.add_item(item_name, 1):
+                    self.ui.show_message("Your inventory is full.")
+                else:
+                    self.player.inventory.remove_item("coins", price)
+                    self.shop.inventory.remove_item(item_name, 1)
+                    self.ui.show_message(f"Bought 1 {item_name.replace('_', ' ')} for {price} coins.")
+
+        elif action == "shop_sell_item":
+            active_items = self._get_active_inventory(self.player.inventory)
+            if 0 <= index < len(active_items):
+                item_name, _ = active_items[index]
+                if item_name == "coins":
+                    self.ui.show_message("You can't sell coins.")
+                elif not self.shop.can_sell_item(item_name):
+                    self.ui.show_message("The shop won't buy that item.")
+                else:
+                    price = self.shop.get_sell_price(item_name)
+                    self.player.inventory.remove_item(item_name, 1)
+                    self.player.inventory.add_item("coins", price)
+                    self.shop.inventory.add_item(item_name, 1)
+                    self.ui.show_message(f"Sold 1 {item_name.replace('_', ' ')} for {price} coins.")
+
+        elif action == "right_click_inventory":
+            if event.type == pygame.MOUSEBUTTONDOWN and self.ui.active_tab == "inventory":
+                rects = self.ui.get_inventory_slot_rects()
+                for i, rect in enumerate(rects):
+                    if rect.collidepoint(event.pos):
+                        self._show_inventory_context_menu(event.pos, i)
+                        break
+                else:
+                    equipped_rects = self.ui.get_equipped_slot_rects()
+                    for i, rect in enumerate(equipped_rects):
+                        if rect.collidepoint(event.pos):
+                            self._show_equipped_context_menu(event.pos, i)
+                            break
+
+        elif action == "craft_item":
+            recipes = self.recipe_manager.get_handcrafted()
+            if 0 <= index < len(recipes):
+                recipe = recipes[index]
+                skill_name = recipe.get("skill", "crafting")
+                skill_level = getattr(self.player.skills, skill_name, self.player.skills.crafting).level
+                success, result = self.player.inventory.craft(recipe["name"], skill_level, self.recipe_manager)
+                if success:
+                    self._award_xp(skill_name, result)
+                    self.ui.show_message(f"{recipe['label']} crafted! (+{result} {skill_name.capitalize()} XP)")
+                else:
+                    self.ui.show_message(result)
+
+        elif action is None and event.type == pygame.MOUSEBUTTONDOWN:
+            if not self.ui.is_pos_on_ui(event.pos):
+                if event.button == 1:
+                    self.handle_world_click(event.pos, event.button)
+                elif event.button == 3:
+                    self.show_world_context_menu(event.pos)
+
+    def _handle_mouse_event(self, event):
+        """Handle MOUSEMOTION and MOUSEBUTTONDOWN events."""
+        # Context menu: any click dismisses it; left-click executes the hovered option
+        if event.type == pygame.MOUSEBUTTONDOWN and self.ui.context_menu:
+            if event.button == 1:
+                act = self.ui.handle_context_menu_click(event.pos)
+                self.ui.context_menu = None
+                if act:
+                    act()
+            else:
+                self.ui.context_menu = None
+            return
+
+        action, index = self.ui.handle_mouse_event(event)
+        self._dispatch_ui_mouse_action(action, index, event)
+
+    def _handle_keydown(self, event):
+        """Handle all KEYDOWN events."""
+        # Global shortcuts — always processed regardless of UI state
+        if event.key == pygame.K_F3:
+            self.show_fps_overlay = not self.show_fps_overlay
+            return
+        if event.key == pygame.K_g:
+            self.tilemap.toggle_grid()
+            return
+        if event.mod & pygame.KMOD_CTRL and event.key == pygame.K_q:
+            self.running = False
+            return
+        if self.game_over:
+            if event.key == pygame.K_r:
+                self._restart()
+            return
+
+        if event.key == pygame.K_ESCAPE and self.ui.context_menu:
+            self.ui.context_menu = None
+            return
+        if self.ui.active_tab == "skills" and event.key == pygame.K_ESCAPE:
+            self.ui.active_tab = None
+            return
+
+        # Panel-specific input routing
+        if self.ui.active_tab == "inventory":
+            self._handle_inventory_input(event)
+        elif self.ui.active_tab == "crafting":
+            self._handle_crafting_input(event)
+        elif self.ui.active_bank:
+            self._handle_bank_input(event)
+        elif self.ui.active_shop:
+            self._handle_shop_input(event)
+        elif getattr(self.ui, 'active_station', None):
+            self._handle_station_input(event)
+        else:
+            self._handle_main_input(event)
+
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -452,177 +657,9 @@ class GameManager:
                 if self.ui.active_tab == "skills":
                     self.ui.scroll_skills(event.y)
             elif event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN):
-                # Context menu: any click dismisses it; left-click executes hovered option
-                if event.type == pygame.MOUSEBUTTONDOWN and self.ui.context_menu:
-                    if event.button == 1:
-                        act = self.ui.handle_context_menu_click(event.pos)
-                        self.ui.context_menu = None
-                        if act:
-                            act()
-                    else:
-                        self.ui.context_menu = None
-                    continue
-
-                action, index = self.ui.handle_mouse_event(event)
-                if action == "next_dialogue":
-                    if self.ui.active_dialogue.get("type", "linear") == "linear":
-                        self.ui.active_dialogue["line_index"] += 1
-                        if self.ui.active_dialogue["line_index"] >= len(self.ui.active_dialogue.get("lines", [])):
-                            self.ui.close_dialogue()
-                elif action == "dialogue_response":
-                    node_id, response_idx = index
-                    node = self.ui.dialogue_manager.get_node(node_id)
-                    response = node["responses"][response_idx]
-                    
-                    condition = response.get("condition")
-                    can_proceed = True
-                    if condition:
-                        if condition["type"] == "has_items":
-                            for req_item, req_amt in condition.get("items", {}).items():
-                                if self.player.inventory.items.get(req_item, 0) < req_amt:
-                                    can_proceed = False
-                                    break
-                    
-                    if not can_proceed:
-                        self.ui.show_message("You don't meet the requirements.")
-                    else:
-                        r_action = response.get("action")
-                        if r_action:
-                            if r_action == "start_quest_bakers_assistant":
-                                self.player.quest_manager.start_quest("bakers_assistant")
-                            elif r_action == "complete_quest_bakers_assistant":
-                                self.player.inventory.remove_item("egg", 1)
-                                self.player.inventory.remove_item("milk", 1)
-                                self.player.inventory.remove_item("wheat", 1)
-                                self.player.quest_manager.complete_quest("bakers_assistant")
-                                self._award_xp("cooking", 100, self.player.rect.centerx, self.player.rect.top)
-                                self.ui.show_message("Quest Complete: The Baker's Assistant!")
-                                baker_npc = next((n for n in self.npcs if n.name == "Baker"), None)
-                                if baker_npc:
-                                    from src.entities.station import Station
-                                    self.stations.append(Station(baker_npc.rect.right + 20, baker_npc.rect.top, "high_tier_stove", "Iron Stove"))
-                        
-                        next_node = response.get("next")
-                        if next_node == "END":
-                            self.ui.close_dialogue()
-                        else:
-                            self.ui.show_dialogue_node(next_node)
-                elif action == "use_item":
-                    active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
-                    if 0 <= index < len(active_items):
-                        item_name, _ = active_items[index]
-                        success, msg = self.player.use_item(item_name)
-                        self.ui.show_message(msg)
-                elif action == "deposit_item":
-                    active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
-                    if 0 <= index < len(active_items):
-                        item_name, _ = active_items[index]
-                        self.player.inventory.remove_item(item_name, 1)
-                        self.player.bank_inventory.add_item(item_name, 1)
-                elif action == "withdraw_item":
-                    active_items = [(item, count) for item, count in self.player.bank_inventory.items.items() if count > 0]
-                    if 0 <= index < len(active_items):
-                        item_name, _ = active_items[index]
-                        if self.player.inventory.add_item(item_name, 1):
-                            self.player.bank_inventory.remove_item(item_name, 1)
-                        else:
-                            self.ui.show_message("Your inventory is full.")
-                elif action == "shop_buy_item":
-                    shop_items = [(item, count) for item, count in self.shop.inventory.items.items() if count > 0]
-                    if 0 <= index < len(shop_items):
-                        item_name, _ = shop_items[index]
-                        price = self.shop.get_buy_price(item_name)
-                        coins = self.player.inventory.get_item_count("coins")
-                        if coins < price:
-                            self.ui.show_message("Not enough coins.")
-                        elif not self.player.inventory.add_item(item_name, 1):
-                            self.ui.show_message("Your inventory is full.")
-                        else:
-                            self.player.inventory.remove_item("coins", price)
-                            self.shop.inventory.remove_item(item_name, 1)
-                            self.ui.show_message(f"Bought 1 {item_name.replace('_', ' ')} for {price} coins.")
-                elif action == "shop_sell_item":
-                    active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
-                    if 0 <= index < len(active_items):
-                        item_name, _ = active_items[index]
-                        if item_name == "coins":
-                            self.ui.show_message("You can't sell coins.")
-                        elif not self.shop.can_sell_item(item_name):
-                            self.ui.show_message("The shop won't buy that item.")
-                        else:
-                            price = self.shop.get_sell_price(item_name)
-                            self.player.inventory.remove_item(item_name, 1)
-                            self.player.inventory.add_item("coins", price)
-                            self.shop.inventory.add_item(item_name, 1)
-                            self.ui.show_message(f"Sold 1 {item_name.replace('_', ' ')} for {price} coins.")
-                elif action == "right_click_inventory":
-                    # Show RS-style context menu for hovered inventory slot
-                    if event.type == pygame.MOUSEBUTTONDOWN and self.ui.active_tab == "inventory":
-                        rects = self.ui.get_inventory_slot_rects()
-                        for i, rect in enumerate(rects):
-                            if rect.collidepoint(event.pos):
-                                self._show_inventory_context_menu(event.pos, i)
-                                break
-                        else:
-                            equipped_rects = self.ui.get_equipped_slot_rects()
-                            for i, rect in enumerate(equipped_rects):
-                                if rect.collidepoint(event.pos):
-                                    self._show_equipped_context_menu(event.pos, i)
-                                    break
-                elif action == "craft_item":
-                    recipes = self.recipe_manager.get_handcrafted()
-                    if 0 <= index < len(recipes):
-                        recipe = recipes[index]
-                        skill_name = recipe.get("skill", "crafting")
-                        skill_level = getattr(self.player.skills, skill_name, self.player.skills.crafting).level
-                        success, result = self.player.inventory.craft(recipe["name"], skill_level, self.recipe_manager)
-                        if success:
-                            self._award_xp(skill_name, result)
-                            self.ui.show_message(f"{recipe['label']} crafted! (+{result} {skill_name.capitalize()} XP)")
-                        else:
-                            self.ui.show_message(result)
-                elif action is None and event.type == pygame.MOUSEBUTTONDOWN:
-                    # Only block clicks that land ON a UI panel/element background
-                    if not self.ui.is_pos_on_ui(event.pos):
-                        if event.button == 1:
-                            self.handle_world_click(event.pos, event.button)
-                        elif event.button == 3:
-                            self.show_world_context_menu(event.pos)
-
+                self._handle_mouse_event(event)
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_F3:
-                    self.show_fps_overlay = not self.show_fps_overlay
-                    continue
-                if event.key == pygame.K_g:
-                    self.tilemap.toggle_grid()
-                    continue
-                if event.mod & pygame.KMOD_CTRL and event.key == pygame.K_q:
-                    self.running = False
-                    continue
-                if self.game_over:
-                    if event.key == pygame.K_r: self._restart()
-                    continue
-
-                if event.key == pygame.K_ESCAPE and self.ui.context_menu:
-                    self.ui.context_menu = None
-                    continue
-
-                if self.ui.active_tab == "skills" and event.key == pygame.K_ESCAPE:
-                    self.ui.active_tab = None
-                    continue
-                
-                if self.ui.active_tab == "inventory":
-                    self._handle_inventory_input(event)
-                elif self.ui.active_tab == "crafting":
-                    self._handle_crafting_input(event)
-                elif self.ui.active_bank:
-                    self._handle_bank_input(event)
-                elif self.ui.active_shop:
-                    self._handle_shop_input(event)
-                elif getattr(self.ui, 'active_station', None):
-                    self._handle_station_input(event)
-                else:
-                    self._handle_main_input(event)
+                self._handle_keydown(event)
 
     def _handle_crafting_input(self, event):
         if event.key == pygame.K_ESCAPE or event.key == pygame.K_c:
