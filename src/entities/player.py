@@ -44,6 +44,7 @@ class Player(Entity):
 
         self.target_destination = None
         self.move_marker_pos = None
+        self.move_marker_time = 0
         self.interaction_target = None
         self.interaction_type = "default"
         self.waypoints = []
@@ -105,6 +106,7 @@ class Player(Entity):
         snap_x = (x // TILE_SIZE) * TILE_SIZE + TILE_SIZE // 2
         snap_y = (y // TILE_SIZE) * TILE_SIZE + TILE_SIZE // 2
         self.move_marker_pos = (snap_x, snap_y)
+        self.move_marker_time = pygame.time.get_ticks()
 
         if waypoints:
             self.waypoints = list(waypoints[1:])
@@ -274,19 +276,23 @@ class Player(Entity):
 
         # Draw movement target indicator (RS-style yellow X)
         if self.move_marker_pos:
-            tx = self.move_marker_pos[0]
-            ty = self.move_marker_pos[1]
-            if camera:
-                tx -= camera.camera_rect.x
-                ty -= camera.camera_rect.y
-            
-            now = pygame.time.get_ticks()
-            if (now // 200) % 2 == 0:
-                x_color = (255, 230, 0, 180)
-                length = 8
-                # Draw an X
-                pygame.draw.line(surface, x_color, (tx - length, ty - length), (tx + length, ty + length), 3)
-                pygame.draw.line(surface, x_color, (tx - length, ty + length), (tx + length, ty - length), 3)
+            current_time = pygame.time.get_ticks()
+            # Only draw for 2 seconds
+            if current_time - self.move_marker_time < 2000:
+                tx = self.move_marker_pos[0]
+                ty = self.move_marker_pos[1]
+                if camera:
+                    tx -= camera.camera_rect.x
+                    ty -= camera.camera_rect.y
+                
+                if (current_time // 200) % 2 == 0:
+                    x_color = (255, 230, 0, 180)
+                    length = 8
+                    # Draw an X
+                    pygame.draw.line(surface, x_color, (tx - length, ty - length), (tx + length, ty + length), 3)
+                    pygame.draw.line(surface, x_color, (tx - length, ty + length), (tx + length, ty - length), 3)
+            else:
+                self.move_marker_pos = None
 
 
     def take_damage(self, amount):

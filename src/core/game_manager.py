@@ -202,7 +202,8 @@ class GameManager:
         return None
 
     def _pathfind_to_entity(self, world_x, world_y, entity=None, action_type="default"):
-        obstacles = self._get_solid_obstacles()
+        # Use full_map=True to ensure we see all water obstacles for pathfinding
+        obstacles = self._get_solid_obstacles(full_map=True)
         path = find_path(
             (self.player.rect.centerx, self.player.rect.centery),
             (world_x, world_y),
@@ -392,8 +393,12 @@ class GameManager:
 
     def _inv_drop_item(self, item_name):
         self.player.inventory.remove_item(item_name, 1)
-        drop_x = self.player.rect.centerx + random.randint(-20, 20)
-        drop_y = self.player.rect.centery + random.randint(-20, 20)
+        # Find a safe spot near the player
+        base_x = self.player.rect.centerx
+        base_y = self.player.rect.centery
+        # Standard item size 20x20
+        drop_x, drop_y = self._find_safe_drop_pos(base_x, base_y, 20, 20)
+        
         self.resources.append(ResourceItem(drop_x, drop_y, item_name))
         self.ui.show_message(f"Dropped 1 {item_name.replace('_', ' ').title()}")
 
@@ -832,9 +837,9 @@ class GameManager:
             if random.random() < chance:
                 amount = random.randint(min_amt, max_amt)
                 for _ in range(amount):
-                    drop_x = enemy.rect.centerx + random.randint(-16, 16)
-                    drop_y = enemy.rect.centery + random.randint(-16, 16)
-                    self.resources.append(ResourceItem(drop_x, drop_y, item_name))
+                    # Use safety logic for enemy drops too
+                    dx, dy = self._find_safe_drop_pos(enemy.rect.centerx, enemy.rect.centery, 20, 20)
+                    self.resources.append(ResourceItem(dx, dy, item_name))
 
     def _kill_enemy(self, enemy):
         """Handle all consequences of an enemy death."""
@@ -906,12 +911,54 @@ class GameManager:
         self.player.set_target_destination(
             nearest.rect.centerx, nearest.rect.centery, target_entity=nearest)
 
-    def _get_solid_obstacles(self):
+    def _find_safe_drop_pos(self, start_x, start_y, w, h):
+        """Find a nearby position for an item using a deterministic spiral search."""
+        # Include everything for maximum safety: inactive nodes and other items
+        obstacles = self._get_solid_obstacles(include_inactive=True, include_items=True)
+        
+        # Spiral search: try points in increasing distance
+        # Each step is 8 pixels (quarter of a tile)
+        step_size = 8
+        for ring in range(0, 10): # expand outward up to 80 pixels
+            if ring == 0:
+                # Try center first
+                candidates = [(0, 0)]
+            else:
+                # Try points on the perimeter of this ring
+                candidates = []
+                r = ring * step_size
+                for i in range(-ring, ring + 1):
+                    candidates.append((i * step_size, -r)) # Top
+                    candidates.append((i * step_size, r))  # Bottom
+                for i in range(-ring + 1, ring):
+                    candidates.append((-r, i * step_size)) # Left
+                    candidates.append((r, i * step_size))  # Right
+            
+            for ox, oy in candidates:
+                # Add a bit of padding (2px) to the item's collision box
+                candidate_rect = pygame.Rect(start_x + ox - w//2 - 2, start_y + oy - h//2 - 2, w + 4, h + 4)
+                
+                collided = False
+                for obs in obstacles:
+                    if candidate_rect.colliderect(obs):
+                        collided = True
+                        break
+                if not collided:
+                    return start_x + ox - w//2, start_y + oy - h//2
+                
+        # Fallback to a random offset if all else fails
+        return start_x + random.randint(-20,20), start_y + random.randint(-20,20)
+
+    def _get_solid_obstacles(self, include_inactive=False, include_items=False, full_map=False):
         obstacles = []
         # Add entity-based obstacles
         for item in self.resources:
-            if isinstance(item, ResourceNode) and item.is_active and item.node_type != "fishing_spot":
+            if isinstance(item, ResourceNode):
+                if (item.is_active or include_inactive) and item.node_type != "fishing_spot":
+                    obstacles.append(item.rect)
+            elif isinstance(item, ResourceItem) and include_items:
                 obstacles.append(item.rect)
+                
         for station in self.stations:
             obstacles.append(station.rect)
         obstacles.append(self.shop.rect)
@@ -920,18 +967,25 @@ class GameManager:
             obstacles.append(npc.rect)
             
         # Add tile-based obstacles (Water)
-        # Optimized: only add tiles that are somewhat near the player/camera
-        cam_x, cam_y = self.camera.camera_rect.x, self.camera.camera_rect.y
-        start_cx = max(0, (cam_x - 100) // TILE_SIZE)
-        end_cx = min(self.tilemap.width, (cam_x + SCREEN_WIDTH + 100) // TILE_SIZE)
-        start_cy = max(0, (cam_y - 100) // TILE_SIZE)
-        end_cy = min(self.tilemap.height, (cam_y + SCREEN_HEIGHT + 100) // TILE_SIZE)
-        
-        for x in range(start_cx, end_cx):
-            for y in range(start_cy, end_cy):
-                if self.tilemap.world_map[x][y] == TILE_WATER:
-                    obstacles.append(pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
-                    
+        if full_map:
+            # Check entire map (used for pathfinding)
+            for x in range(self.tilemap.width):
+                for y in range(self.tilemap.height):
+                    if self.tilemap.world_map[x][y] == TILE_WATER:
+                        obstacles.append(pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+        else:
+            # Optimized: only add tiles that are somewhat near the player/camera (used for frame-by-frame collision)
+            cam_x, cam_y = self.camera.camera_rect.x, self.camera.camera_rect.y
+            start_cx = max(0, (cam_x - 100) // TILE_SIZE)
+            end_cx = min(self.tilemap.width, (cam_x + SCREEN_WIDTH + 100) // TILE_SIZE)
+            start_cy = max(0, (cam_y - 100) // TILE_SIZE)
+            end_cy = min(self.tilemap.height, (cam_y + SCREEN_HEIGHT + 100) // TILE_SIZE)
+            
+            for x in range(start_cx, end_cx):
+                for y in range(start_cy, end_cy):
+                    if self.tilemap.world_map[x][y] == TILE_WATER:
+                        obstacles.append(pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+                        
         return obstacles
 
     def update(self, dt):
