@@ -2,7 +2,13 @@ import pygame
 import os
 from src.systems.recipe_manager import RecipeManager
 from src.systems.dialogue_manager import DialogueManager
-from src.core.settings import SCREEN_WIDTH, SCREEN_HEIGHT
+from src.core.settings import SCREEN_WIDTH, SCREEN_HEIGHT, ITEM_TOOLTIPS
+
+INV_COLS = 4
+INV_ROWS = 7
+INV_NUM_SLOTS = INV_COLS * INV_ROWS
+INV_SLOT_SIZE = 32
+INV_SLOT_PAD = 3
 
 class UIManager:
     def __init__(self, game_manager):
@@ -47,6 +53,10 @@ class UIManager:
         self.active_bank = False
         self.active_shop = False
         self.shop_index = 0
+        self.inventory_sort_mode = "name"
+        self.inv_hover_slot = -1
+        self.inv_drag_from = None
+        self.inv_press_slot = None
         self.active_station = None
         self.station_index = 0
         self.skills_scroll_y = 0
@@ -146,62 +156,46 @@ class UIManager:
         title = self.font.render("General Store", True, (255, 215, 0))
         surface.blit(title, (panel_x + 20, panel_y + 15))
         
-        # BUY section (Left) - items shop is selling
         coins = self.player.inventory.get_item_count("coins")
         buy_title = self.font.render(f"Buy (You have {coins} coins)", True, (200, 200, 200))
         surface.blit(buy_title, (panel_x + 20, panel_y + 50))
-        self._draw_shop_buy_slots(surface, panel_x + 20, panel_y + 80)
-        
-        # SELL section (Right) - items player can sell to shop  
+        if self.shop:
+            bx, by = panel_x + 30, panel_y + 80
+            self._draw_osrs_slot_grid(
+                surface, self.shop.inventory, bx, by,
+                highlight_index=None, hide_coins=False, hover_index=-1, flash_full=False,
+            )
+            cell = self._inv_cell_step()
+            for i in range(INV_NUM_SLOTS):
+                pair = self.shop.inventory.get_slot(i)
+                if not pair:
+                    continue
+                item_name, _ = pair
+                row, col = i // INV_COLS, i % INV_COLS
+                ix = bx + col * cell
+                iy = by + row * cell
+                price = self.shop.get_buy_price(item_name)
+                ps = self.small_font.render(f"{price}g", True, (255, 200, 100))
+                surface.blit(ps, (ix, min(iy + INV_SLOT_SIZE + 1, panel_y + panel_h - 40)))
+        else:
+            t = self.small_font.render("(Shop not available)", True, (150, 150, 150))
+            surface.blit(t, (panel_x + 30, panel_y + 80))
+
         sell_title = self.font.render("Sell", True, (200, 200, 200))
         surface.blit(sell_title, (panel_x + 320, panel_y + 50))
-        self._draw_inventory_slots(surface, self.player.inventory, panel_x + 320, panel_y + 80, slots_per_row=6, highlight_index=None)
+        self._draw_osrs_slot_grid(
+            surface,
+            self.player.inventory,
+            panel_x + 330,
+            panel_y + 80,
+            highlight_index=None,
+            hide_coins=False,
+            hover_index=-1,
+            flash_full=False,
+        )
         
         hint = self.font.render("[ESC] Close  [LClick] Buy/Sell 1", True, (150, 150, 150))
         surface.blit(hint, (panel_x + 20, panel_y + panel_h - 30))
-
-    def _draw_shop_buy_slots(self, surface, start_x, start_y):
-        """Draw the shop's items for sale with prices."""
-        slot_size = 40
-        padding = 4
-        slots_per_row = 6
-        
-        if not self.shop:
-            font_small = pygame.font.SysFont(None, 20)
-            text = font_small.render("(Shop not available)", True, (150, 150, 150))
-            surface.blit(text, (start_x, start_y))
-            return
-        
-        # Draw shop's items for sale with prices
-        shop_items = [(item, count) for item, count in self.shop.inventory.items.items() if count > 0]
-        
-        for i, (item_name, count) in enumerate(shop_items):
-            row = i // slots_per_row
-            col = i % slots_per_row
-            x = start_x + col * (slot_size + padding)
-            y = start_y + row * (slot_size + padding)
-            
-            # Draw slot background
-            pygame.draw.rect(surface, (60, 50, 40), (x, y, slot_size, slot_size))
-            pygame.draw.rect(surface, (100, 80, 60), (x, y, slot_size, slot_size), 1)
-            
-            # Draw item icon
-            if item_name in self.item_images:
-                surface.blit(self.item_images[item_name], (x, y))
-            else:
-                # Fallback to 2-letter abbreviation
-                abbrev = item_name[:2].upper()
-                abbrev_surf = self.small_font.render(abbrev, True, (200, 200, 200))
-                surface.blit(abbrev_surf, (x + 12, y + 12))
-            
-            # Draw count
-            count_surf = self.small_font.render(str(count), True, (255, 215, 0))
-            surface.blit(count_surf, (x + slot_size - 14, y + slot_size - 14))
-            
-            # Draw price label below item
-            price = self.shop.get_buy_price(item_name)
-            price_surf = self.small_font.render(f"{price}g", True, (255, 200, 100))
-            surface.blit(price_surf, (x, y + slot_size + 2))
 
     def show_context_menu(self, pos, options):
         self.context_menu = {"pos": pos, "options": options}
@@ -424,6 +418,8 @@ class UIManager:
 
         # Draw Sidebar
         self._draw_sidebar(surface)
+        self._draw_inv_tooltip(surface)
+        self._draw_inv_drag_ghost(surface)
 
         # Context menu draws on top of everything
         self._draw_context_menu(surface)
@@ -501,25 +497,108 @@ class UIManager:
         elif self.active_tab == "combat":
             self._draw_combat_tab(surface, crect)
 
+    def _inv_cell_step(self):
+        return INV_SLOT_SIZE + INV_SLOT_PAD
+
+    def _sidebar_inv_grid_origin(self):
+        panel_w, outer_h = 300, 440
+        panel_x = SCREEN_WIDTH - panel_w
+        outer_y = SCREEN_HEIGHT - outer_h
+        tab_h = 34
+        panel_y = outer_y + tab_h
+        grid_start_y = panel_y + 58
+        cell = self._inv_cell_step()
+        grid_w = INV_COLS * cell - INV_SLOT_PAD
+        grid_start_x = panel_x + (panel_w - grid_w) // 2
+        return grid_start_x, grid_start_y
+
+    def _sidebar_gear_zone(self):
+        grid_x, grid_y = self._sidebar_inv_grid_origin()
+        cell = self._inv_cell_step()
+        grid_h = INV_ROWS * cell - INV_SLOT_PAD
+        gear_y = grid_y + grid_h + 10
+        panel_w = 300
+        panel_x = SCREEN_WIDTH - panel_w
+        return panel_x, gear_y
+
+    def get_inventory_sort_button_rects(self):
+        panel_w, outer_h = 300, 440
+        panel_x = SCREEN_WIDTH - panel_w
+        outer_y = SCREEN_HEIGHT - outer_h
+        tab_h = 34
+        panel_y = outer_y + tab_h
+        y = panel_y + 34
+        modes = [("name", "Name"), ("type", "Type"), ("quantity", "Qty")]
+        rects = []
+        bx = panel_x + 8
+        for mode, label in modes:
+            rects.append((pygame.Rect(bx, y, 56, 18), mode))
+            bx += 62
+        return rects
+
+    def _draw_osrs_slot_grid(
+        self,
+        surface,
+        inventory,
+        start_x,
+        start_y,
+        highlight_index=None,
+        hide_coins=False,
+        hover_index=-1,
+        flash_full=False,
+    ):
+        cell = self._inv_cell_step()
+        bottom = start_y
+        for i in range(INV_NUM_SLOTS):
+            row = i // INV_COLS
+            col = i % INV_COLS
+            x = start_x + col * cell
+            y = start_y + row * cell
+            bottom = y + INV_SLOT_SIZE
+            pair = inventory.get_slot(i)
+            item = pair[0] if pair else None
+            count = pair[1] if pair else 0
+            visual_empty = pair is None or (hide_coins and item == "coins")
+
+            bg = (22, 22, 24) if visual_empty else (38, 38, 42)
+            pygame.draw.rect(surface, bg, (x, y, INV_SLOT_SIZE, INV_SLOT_SIZE))
+            border_c = (55, 55, 60)
+            if flash_full and pair and not (hide_coins and item == "coins"):
+                border_c = (180, 60, 60)
+            elif i == highlight_index:
+                border_c = (255, 220, 80)
+            elif i == hover_index:
+                border_c = (140, 130, 90)
+            pygame.draw.rect(surface, border_c, (x, y, INV_SLOT_SIZE, INV_SLOT_SIZE), 2)
+
+            if not visual_empty and item:
+                if item in self.item_images:
+                    img = self.item_images[item]
+                    rect = img.get_rect(center=(x + INV_SLOT_SIZE // 2, y + INV_SLOT_SIZE // 2))
+                    surface.blit(img, rect)
+                else:
+                    parts = item.split("_")
+                    label = (parts[0][0] + parts[1][0]).upper() if len(parts) > 1 else item[:2].upper()
+                    text = self.small_font.render(label, True, (180, 180, 180))
+                    surface.blit(text, (x + 4, y + 4))
+                if count > 1:
+                    count_surf = self.small_font.render(str(count), True, (255, 255, 255))
+                    surface.blit(
+                        count_surf,
+                        (x + INV_SLOT_SIZE - count_surf.get_width() - 2, y + INV_SLOT_SIZE - count_surf.get_height() - 2),
+                    )
+        return bottom
+
     def get_inventory_slot_rects(self):
         rects = []
-        panel_w, panel_h = 300, 440
-        panel_x = SCREEN_WIDTH - panel_w
-        panel_y = SCREEN_HEIGHT - panel_h + 30
-        start_x = panel_x + 10
-        start_y = panel_y + 40
-        slots_per_row = 6
-        slot_size = 40
-        padding = 4
-        
-        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
-        
-        for i in range(len(active_items)):
-            row = i // slots_per_row
-            col = i % slots_per_row
-            x = start_x + col * (slot_size + padding)
-            y = start_y + row * (slot_size + padding)
-            rects.append(pygame.Rect(x, y, slot_size, slot_size))
+        start_x, start_y = self._sidebar_inv_grid_origin()
+        cell = self._inv_cell_step()
+        for i in range(INV_NUM_SLOTS):
+            row = i // INV_COLS
+            col = i % INV_COLS
+            x = start_x + col * cell
+            y = start_y + row * cell
+            rects.append(pygame.Rect(x, y, INV_SLOT_SIZE, INV_SLOT_SIZE))
         return rects
 
     def get_shop_buy_slot_rects(self):
@@ -529,19 +608,15 @@ class UIManager:
         panel_w, panel_h = 600, 450
         panel_x = (SCREEN_WIDTH - panel_w) // 2
         panel_y = (SCREEN_HEIGHT - panel_h) // 2
-        start_x = panel_x + 20
+        start_x = panel_x + 30
         start_y = panel_y + 80
-        slots_per_row = 6
-        slot_size = 40
-        padding = 4
-
-        shop_items = [(item, count) for item, count in self.shop.inventory.items.items() if count > 0]
-        for i in range(len(shop_items)):
-            row = i // slots_per_row
-            col = i % slots_per_row
-            x = start_x + col * (slot_size + padding)
-            y = start_y + row * (slot_size + padding)
-            rects.append(pygame.Rect(x, y, slot_size, slot_size))
+        cell = self._inv_cell_step()
+        for i in range(INV_NUM_SLOTS):
+            row = i // INV_COLS
+            col = i % INV_COLS
+            x = start_x + col * cell
+            y = start_y + row * cell
+            rects.append(pygame.Rect(x, y, INV_SLOT_SIZE, INV_SLOT_SIZE))
         return rects
 
     def get_shop_sell_slot_rects(self):
@@ -549,19 +624,15 @@ class UIManager:
         panel_w, panel_h = 600, 450
         panel_x = (SCREEN_WIDTH - panel_w) // 2
         panel_y = (SCREEN_HEIGHT - panel_h) // 2
-        start_x = panel_x + 320
+        start_x = panel_x + 330
         start_y = panel_y + 80
-        slots_per_row = 6
-        slot_size = 40
-        padding = 4
-
-        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
-        for i in range(len(active_items)):
-            row = i // slots_per_row
-            col = i % slots_per_row
-            x = start_x + col * (slot_size + padding)
-            y = start_y + row * (slot_size + padding)
-            rects.append(pygame.Rect(x, y, slot_size, slot_size))
+        cell = self._inv_cell_step()
+        for i in range(INV_NUM_SLOTS):
+            row = i // INV_COLS
+            col = i % INV_COLS
+            x = start_x + col * cell
+            y = start_y + row * cell
+            rects.append(pygame.Rect(x, y, INV_SLOT_SIZE, INV_SLOT_SIZE))
         return rects
 
     def get_bank_slot_rects(self, is_player_inv=False):
@@ -569,34 +640,25 @@ class UIManager:
         panel_w, panel_h = 600, 450
         panel_x = (SCREEN_WIDTH - panel_w) // 2
         panel_y = (SCREEN_HEIGHT - panel_h) // 2
-        start_x = panel_x + 20 if is_player_inv else panel_x + 320
+        start_x = (panel_x + 25) if is_player_inv else (panel_x + 325)
         start_y = panel_y + 80
-        slots_per_row = 6
-        slot_size = 40
-        padding = 4
-        
-        inventory = self.player.inventory if is_player_inv else self.player.bank_inventory
-        active_items = [(item, count) for item, count in inventory.items.items() if count > 0]
-        
-        for i in range(len(active_items)):
-            row = i // slots_per_row
-            col = i % slots_per_row
-            x = start_x + col * (slot_size + padding)
-            y = start_y + row * (slot_size + padding)
-            rects.append(pygame.Rect(x, y, slot_size, slot_size))
+        cell = self._inv_cell_step()
+        for i in range(INV_NUM_SLOTS):
+            row = i // INV_COLS
+            col = i % INV_COLS
+            x = start_x + col * cell
+            y = start_y + row * cell
+            rects.append(pygame.Rect(x, y, INV_SLOT_SIZE, INV_SLOT_SIZE))
         return rects
 
     def get_equipped_slot_rects(self):
         rects = []
-        panel_w, panel_h = 300, 440
-        panel_x = SCREEN_WIDTH - panel_w
-        panel_y = SCREEN_HEIGHT - panel_h + 30
-        gear_y = panel_y + 230
-        start_x = panel_x + 10
-        start_y = gear_y + 30
-        slots_per_row = 6
-        slot_size = 40
-        padding = 4
+        panel_x, gear_y = self._sidebar_gear_zone()
+        start_x = panel_x + 8
+        start_y = gear_y + 22
+        slots_per_row = 4
+        slot_size = 32
+        padding = 3
 
         for i in range(len(self.player.equipped_items)):
             row = i // slots_per_row
@@ -656,6 +718,9 @@ class UIManager:
             return None, None
 
         if not (self.active_tab or getattr(self, 'active_bank', False) or getattr(self, 'active_shop', False)):
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self.inv_press_slot = None
+                self.inv_drag_from = None
             return None, None
 
         if event.type == pygame.MOUSEMOTION:
@@ -682,17 +747,47 @@ class UIManager:
                         self.inventory_index = i
                         return None, None
             elif self.active_tab == 'inventory':
+                self.inv_hover_slot = -1
                 rects = self.get_inventory_slot_rects()
                 for i, rect in enumerate(rects):
                     if rect.collidepoint(event.pos):
                         self.inventory_index = i
+                        self.inv_hover_slot = i
                         break
+                if self.inv_press_slot is not None and pygame.mouse.get_pressed()[0]:
+                    pr = rects[self.inv_press_slot]
+                    if not pr.collidepoint(event.pos):
+                        self.inv_drag_from = self.inv_press_slot
             elif self.active_tab == 'crafting':
                 rects = self.get_crafting_recipe_rects()
                 for i, rect in enumerate(rects):
                     if rect.collidepoint(event.pos):
                         self.crafting_index = i
                         break
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.active_tab == 'inventory':
+                if self.inv_drag_from is not None:
+                    dst = -1
+                    for i, r in enumerate(self.get_inventory_slot_rects()):
+                        if r.collidepoint(event.pos):
+                            dst = i
+                            break
+                    src = self.inv_drag_from
+                    self.inv_drag_from = None
+                    self.inv_press_slot = None
+                    if dst >= 0:
+                        return "inv_drag_drop", (src, dst)
+                elif self.inv_press_slot is not None:
+                    s = self.inv_press_slot
+                    self.inv_press_slot = None
+                    rects = self.get_inventory_slot_rects()
+                    if 0 <= s < len(rects) and rects[s].collidepoint(event.pos):
+                        pair = self.player.inventory.get_slot(s)
+                        if pair and pair[0] != "coins":
+                            return "use_item", s
+            else:
+                self.inv_press_slot = None
+                self.inv_drag_from = None
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1: # Left click
                 if self.active_tab == 'combat' and self.player.combat_mode == "magic":
@@ -724,28 +819,43 @@ class UIManager:
                         if rect.collidepoint(event.pos):
                             return "shop_sell_item", i
                 elif self.active_tab == 'inventory':
+                    for r, mode in self.get_inventory_sort_button_rects():
+                        if r.collidepoint(event.pos):
+                            self.inventory_sort_mode = mode
+                            self.player.inventory.sort_slots(mode)
+                            return None, None
                     rects = self.get_inventory_slot_rects()
                     for i, rect in enumerate(rects):
                         if rect.collidepoint(event.pos):
                             self.inventory_index = i
-                            return "use_item", i
+                            pair = self.player.inventory.get_slot(i)
+                            if pair:
+                                self.inv_press_slot = i
+                            return None, None
                 elif self.active_tab == 'crafting':
                     rects = self.get_crafting_recipe_rects()
                     for i, rect in enumerate(rects):
                         if rect.collidepoint(event.pos):
                             self.crafting_index = i
                             return "craft_item", i
+            elif event.button == 2:
+                if self.active_tab == 'inventory':
+                    for i, rect in enumerate(self.get_inventory_slot_rects()):
+                        if rect.collidepoint(event.pos):
+                            return "inv_split", i
             elif event.button == 3: # Right click
                 if self.active_tab == 'inventory':
+                    self.inv_press_slot = None
+                    self.inv_drag_from = None
                     slot_rects = self.get_inventory_slot_rects()
                     for i, rect in enumerate(slot_rects):
                         if rect.collidepoint(event.pos):
                             return "right_click_inventory", i
-                    
+
                     equipped_rects = self.get_equipped_slot_rects()
                     for i, rect in enumerate(equipped_rects):
                         if rect.collidepoint(event.pos):
-                            return "right_click_inventory", i
+                            return "right_click_equipped", i
                 elif self.active_tab == 'crafting':
                     rects = self.get_crafting_recipe_rects()
                     for i, rect in enumerate(rects):
@@ -976,17 +1086,35 @@ class UIManager:
 
         title = self.font.render("Bank of Runescape", True, (255, 215, 0))
         surface.blit(title, (panel_x + 20, panel_y + 15))
-        
-        # Player Inventory section (Left)
+
         player_title = self.font.render("Your Inventory", True, (200, 200, 200))
-        surface.blit(player_title, (panel_x + 20, panel_y + 50))
-        self._draw_inventory_slots(surface, self.player.inventory, panel_x + 20, panel_y + 80, slots_per_row=6, highlight_index=self.inventory_index)
-        
-        # Bank Inventory section (Right)
+        surface.blit(player_title, (panel_x + 20, panel_y + 48))
+        gx = panel_x + 25
+        gy = panel_y + 72
+        self._draw_osrs_slot_grid(
+            surface,
+            self.player.inventory,
+            gx,
+            gy,
+            highlight_index=self.inventory_index,
+            hide_coins=True,
+            hover_index=-1,
+            flash_full=self.player.inventory.occupied_slots() >= self.player.inventory.MAX_SLOTS,
+        )
+
         bank_title = self.font.render("Bank Vault", True, (200, 200, 200))
-        surface.blit(bank_title, (panel_x + 320, panel_y + 50))
-        self._draw_inventory_slots(surface, self.player.bank_inventory, panel_x + 320, panel_y + 80, slots_per_row=6, highlight_index=self.bank_index)
-        
+        surface.blit(bank_title, (panel_x + 320, panel_y + 48))
+        self._draw_osrs_slot_grid(
+            surface,
+            self.player.bank_inventory,
+            panel_x + 325,
+            gy,
+            highlight_index=self.bank_index,
+            hide_coins=False,
+            hover_index=-1,
+            flash_full=False,
+        )
+
         hint = self.font.render("[ESC] Close   [T] Deposit All  [LClick] Deposit/Withdraw 1", True, (150, 150, 150))
         surface.blit(hint, (panel_x + 20, panel_y + panel_h - 30))
 
@@ -998,55 +1126,122 @@ class UIManager:
             panel_x = (surface.get_width() - panel_w) // 2
             panel_y = (surface.get_height() - panel_h) // 2
 
+        self.inventory_index = max(0, min(self.inventory_index, INV_NUM_SLOTS - 1))
 
-
-        # Header
         title = self.font.render("Inventory", True, (255, 215, 0))
-        surface.blit(title, (panel_x + panel_w // 2 - title.get_width() // 2, panel_y + 15))
-        pygame.draw.line(surface, (70, 70, 70), (panel_x + 10, panel_y + 30), (panel_x + panel_w - 10, panel_y + 30), 2)
+        surface.blit(title, (panel_x + panel_w // 2 - title.get_width() // 2, panel_y + 4))
 
-        # Inventory Section
-        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
-        if self.inventory_index >= len(active_items) and len(active_items) > 0:
-            self.inventory_index = len(active_items) - 1
-            
-        self._draw_inventory_slots(surface, self.player.inventory, panel_x + 10, panel_y + 40, slots_per_row=5, highlight_index=self.inventory_index, hide_coins=True)
+        occ = self.player.inventory.occupied_slots()
+        cap_color = (255, 100, 80) if occ >= self.player.inventory.MAX_SLOTS else (200, 180, 120)
+        cap_surf = self.small_font.render(f"{occ} / {self.player.inventory.MAX_SLOTS} slots", True, cap_color)
+        surface.blit(cap_surf, (panel_x + panel_w // 2 - cap_surf.get_width() // 2, panel_y + 22))
 
-        # Show selected item name (Detail section)
-        if 0 <= self.inventory_index < len(active_items):
-            item_id, count = active_items[self.inventory_index]
-            display_name = item_id.replace('_', ' ').title()
-            
-            # Detail Box
-            detail_y = panel_y + 200
-            pygame.draw.rect(surface, (20, 20, 20), (panel_x + 20, detail_y, panel_w - 40, 40))
-            pygame.draw.rect(surface, (50, 50, 50), (panel_x + 20, detail_y, panel_w - 40, 40), 1)
-            
-            name_surf = self.font.render(f"{display_name} (x{count})", True, (255, 255, 255))
-            surface.blit(name_surf, (panel_x + panel_w // 2 - name_surf.get_width() // 2, detail_y + 10))
+        sort_lbl = {"name": "Name", "type": "Type", "quantity": "Qty"}
+        for r, mode in self.get_inventory_sort_button_rects():
+            active = mode == self.inventory_sort_mode
+            bg = (70, 55, 30) if active else (45, 40, 35)
+            pygame.draw.rect(surface, bg, r)
+            pygame.draw.rect(surface, (120, 100, 60), r, 1)
+            ts = self.small_font.render(
+                sort_lbl.get(mode, mode), True, (255, 215, 0) if active else (160, 160, 160)
+            )
+            surface.blit(ts, (r.x + 6, r.y + 2))
 
-        # Gear Section
-        gear_y = panel_y + 230
-        pygame.draw.line(surface, (70, 70, 70), (panel_x + 20, gear_y), (panel_x + panel_w - 20, gear_y), 2)
-        gear_title = self.font.render("Equipped Gear", True, (255, 215, 0))
-        surface.blit(gear_title, (panel_x + 20, gear_y + 10))
-        
+        gx, gy = self._sidebar_inv_grid_origin()
+        flash_full = occ >= self.player.inventory.MAX_SLOTS
+        hi = self.inventory_index if self.inv_drag_from is None else None
+        self._draw_osrs_slot_grid(
+            surface,
+            self.player.inventory,
+            gx,
+            gy,
+            highlight_index=hi,
+            hide_coins=True,
+            hover_index=self.inv_hover_slot,
+            flash_full=flash_full,
+        )
+
+        _, gear_y = self._sidebar_gear_zone()
+        pygame.draw.line(surface, (70, 70, 70), (panel_x + 12, gear_y - 6), (panel_x + panel_w - 12, gear_y - 6), 1)
+        gear_title = self.font.render("Worn", True, (255, 215, 0))
+        surface.blit(gear_title, (panel_x + 12, gear_y - 2))
+
         if self.player.equipped_items:
-            self._draw_equipped_slots(surface, self.player.equipped_items, panel_x + 10, gear_y + 30, slots_per_row=5)
+            self._draw_equipped_slots(surface, self.player.equipped_items, panel_x + 8, gear_y + 18, slots_per_row=4)
         else:
-            none_surf = self.font.render("None", True, (100, 100, 100))
-            surface.blit(none_surf, (panel_x + 30, gear_y + 40))
+            none_surf = self.small_font.render("Nothing equipped", True, (100, 100, 100))
+            surface.blit(none_surf, (panel_x + 16, gear_y + 24))
 
-        # Coin Box
-        coins = self.player.inventory.items.get("coins", 0)
-        coin_y = panel_y + panel_h - 45
-        pygame.draw.line(surface, (70, 70, 70), (panel_x + 10, coin_y - 5), (panel_x + panel_w - 10, coin_y - 5), 2)
-        coin_surf = self.font.render(f"Coins: {coins:,}", True, (255, 215, 0))
-        surface.blit(coin_surf, (panel_x + panel_w // 2 - coin_surf.get_width() // 2, coin_y - 2))
+        coins = self.player.inventory.get_item_count("coins")
+        coin_y = panel_y + panel_h - 36
+        pygame.draw.line(surface, (70, 70, 70), (panel_x + 10, coin_y - 6), (panel_x + panel_w - 10, coin_y - 6), 1)
+        coin_surf = self.small_font.render(f"Coins: {coins:,}", True, (255, 215, 0))
+        surface.blit(coin_surf, (panel_x + panel_w // 2 - coin_surf.get_width() // 2, coin_y))
 
-        # Footer hints
-        hint = self.small_font.render("[I] Close  [Enter/LClick] Use Item  [RClick] Drop/Remove", True, (150, 150, 150))
-        surface.blit(hint, (panel_x + panel_w // 2 - hint.get_width() // 2, panel_y + panel_h - 20))
+        sel = self.player.inventory.get_slot(self.inventory_index)
+        if sel and sel[0] != "coins":
+            dn = sel[0].replace("_", " ").title()
+            line = self.small_font.render(f"{dn} ×{sel[1]}", True, (220, 220, 220))
+            surface.blit(line, (panel_x + panel_w // 2 - line.get_width() // 2, coin_y - 22))
+
+        hint = self.small_font.render(
+            "[I] Close  [Click] Use  [Drag] Move  [M3] Split  [RClick] Menu", True, (130, 130, 130)
+        )
+        surface.blit(hint, (panel_x + panel_w // 2 - hint.get_width() // 2, panel_y + panel_h - 16))
+
+    def _draw_inv_tooltip(self, surface):
+        if self.active_tab != "inventory" or self.inv_hover_slot < 0:
+            return
+        pair = self.player.inventory.get_slot(self.inv_hover_slot)
+        if not pair:
+            return
+        item_id, count = pair
+        if item_id == "coins":
+            return
+        lines = ITEM_TOOLTIPS.get(item_id)
+        if not lines:
+            dn = item_id.replace("_", " ").title()
+            lines = [f"It's a {dn}.", f"You have {count}." if count > 1 else ""]
+
+        mx, my = pygame.mouse.get_pos()
+        pad = 6
+        name = item_id.replace("_", " ").title()
+        header = self.small_font.render(f"{name} ×{count}", True, (255, 215, 0))
+        body_surfs = []
+        for ln in lines:
+            if ln:
+                body_surfs.append(self.small_font.render(ln, True, (220, 220, 210)))
+        tw = max([header.get_width()] + [b.get_width() for b in body_surfs], default=header.get_width()) + pad * 2
+        th = header.get_height() + sum(b.get_height() + 2 for b in body_surfs) + pad * 2
+        bx = min(mx + 14, SCREEN_WIDTH - tw - 8)
+        by = min(my + 14, SCREEN_HEIGHT - th - 8)
+        rect = pygame.Rect(bx, by, tw, th)
+        pygame.draw.rect(surface, (25, 22, 18), rect)
+        pygame.draw.rect(surface, (90, 75, 45), rect, 2)
+        surface.blit(header, (bx + pad, by + pad))
+        yy = by + pad + header.get_height() + 4
+        for b in body_surfs:
+            surface.blit(b, (bx + pad, yy))
+            yy += b.get_height() + 2
+
+    def _draw_inv_drag_ghost(self, surface):
+        if self.active_tab != "inventory" or self.inv_drag_from is None:
+            return
+        pair = self.player.inventory.get_slot(self.inv_drag_from)
+        if not pair:
+            return
+        item_id, _c = pair
+        mx, my = pygame.mouse.get_pos()
+        half = INV_SLOT_SIZE // 2
+        if item_id in self.item_images:
+            img = self.item_images[item_id]
+            r = img.get_rect(center=(mx, my))
+            surface.blit(img, r)
+        else:
+            pygame.draw.rect(surface, (50, 50, 55), (mx - half, my - half, INV_SLOT_SIZE, INV_SLOT_SIZE))
+            ab = item_id[:2].upper()
+            t = self.small_font.render(ab, True, (180, 180, 180))
+            surface.blit(t, (mx - t.get_width() // 2, my - t.get_height() // 2))
 
     def _draw_inventory_slots(self, surface, inventory, start_x, start_y, slots_per_row=5, highlight_index=None, hide_coins=False):
         slot_size = 40
@@ -1094,9 +1289,7 @@ class UIManager:
                                           y + slot_size - count_surf.get_height() - 2))
         return max_y
 
-    def _draw_equipped_slots(self, surface, items, start_x, start_y, slots_per_row=5):
-        slot_size = 40
-        padding = 4
+    def _draw_equipped_slots(self, surface, items, start_x, start_y, slots_per_row=4, slot_size=32, padding=3):
         
         for i, item in enumerate(items):
             row = i // slots_per_row

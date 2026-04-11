@@ -360,39 +360,58 @@ class GameManager:
 
         self.ui.show_context_menu(screen_pos, options)
 
-    def _show_inventory_context_menu(self, screen_pos, item_index):
-        """RS-style right-click menu for an inventory item."""
-        active_items = self._get_active_inventory(self.player.inventory, exclude_coins=True)
-        if not (0 <= item_index < len(active_items)):
+    def _show_inventory_context_menu(self, screen_pos, slot_index):
+        """RS-style right-click menu for an inventory slot (0–27)."""
+        from src.core.settings import ITEM_TOOLTIPS, inventory_context_use_verb
+
+        pair = self.player.inventory.get_slot(slot_index)
+        if not pair:
             return
-        item_name, _ = active_items[item_index]
+        item_name, count = pair
+        if item_name == "coins":
+            return
         display_name = item_name.replace("_", " ").title()
 
         options = []
-        
-        # Special "Bury" option for bones
+        si = slot_index
+
         if item_name == "bones":
-            _n = item_name
             options.append({
                 "label": "Bury Bone",
-                "action": lambda n=_n: self._bury_bone()
+                "action": lambda i=si: self._bury_bone_at_slot(i),
             })
-        
-        # Use / Equip option
-        _n = item_name
-        options.append({
-            "label": f"Use {display_name}",
-            "action": lambda n=_n: self._inv_use_item(n)
-        })
-        # Drop option
+        else:
+            verb = inventory_context_use_verb(item_name)
+            options.append({
+                "label": f"{verb} {display_name}",
+                "action": lambda i=si: self._inv_use_at_slot(i),
+            })
+
+        if count > 1:
+            options.append({
+                "label": f"Split {display_name}",
+                "action": lambda i=si: self._inv_split_slot(i),
+            })
+
         options.append({
             "label": f"Drop {display_name}",
-            "action": lambda n=_n: self._inv_drop_item(n)
+            "action": lambda i=si: self._inv_drop_from_slot(i),
         })
+
+        def _examine():
+            lines = ITEM_TOOLTIPS.get(item_name)
+            if lines:
+                self.ui.show_message(" ".join(lines))
+            else:
+                self.ui.show_message(f"It's a {display_name}.")
+
+        options.append({"label": f"Examine {display_name}", "action": _examine})
+
         options.append({
-            "label": f"Examine {display_name}",
-            "action": lambda dn=display_name: self.ui.show_message(f"It's a {dn}.")
+            "label": f"Destroy {display_name}",
+            "action": lambda: self.ui.show_message("You cannot destroy this."),
         })
+
         self.ui.show_context_menu(screen_pos, options)
 
     def _show_equipped_context_menu(self, screen_pos, item_index):
@@ -418,28 +437,47 @@ class GameManager:
         success, msg = self.player.use_item(item_name)
         self.ui.show_message(msg)
 
-    def _inv_drop_item(self, item_name):
-        self.player.inventory.remove_item(item_name, 1)
-        # Find a safe spot near the player
+    def _inv_use_at_slot(self, slot_index):
+        success, msg = self.player.use_item_at_slot(slot_index)
+        self.ui.show_message(msg)
+
+    def _inv_drop_from_slot(self, slot_index):
+        pair = self.player.inventory.get_slot(slot_index)
+        if not pair:
+            return
+        item_name, _ = pair
+        if not self.player.inventory.remove_from_slot(slot_index, 1):
+            return
         base_x = self.player.rect.centerx
         base_y = self.player.rect.centery
-        # Standard item size 20x20
         drop_x, drop_y = self._find_safe_drop_pos(base_x, base_y, 20, 20)
-        
         self.resources.append(ResourceItem(drop_x, drop_y, item_name))
         self.ui.show_message(f"Dropped 1 {item_name.replace('_', ' ').title()}")
+
+    def _inv_split_slot(self, slot_index):
+        pair = self.player.inventory.get_slot(slot_index)
+        if not pair or pair[1] <= 1:
+            self.ui.show_message("You can't split that stack.")
+            return
+        take = pair[1] // 2
+        if take < 1:
+            self.ui.show_message("You can't split that stack.")
+            return
+        if self.player.inventory.split_slot(slot_index, take):
+            self.ui.show_message("You split the stack.")
+        else:
+            self.ui.show_message("You don't have room to split.")
 
     def _inv_remove_equipped(self, item_name):
         success, msg = self.player.unequip_item(item_name)
         self.ui.show_message(msg)
 
-    def _bury_bone(self):
-        """Bury a bone and award Prayer XP."""
-        if self.player.inventory.items.get("bones", 0) <= 0:
+    def _bury_bone_at_slot(self, slot_index):
+        pair = self.player.inventory.get_slot(slot_index)
+        if not pair or pair[0] != "bones":
             self.ui.show_message("You don't have any bones to bury.")
             return
-        
-        self.player.inventory.remove_item("bones", 1)
+        self.player.inventory.remove_from_slot(slot_index, 1)
         prayer_xp = 4
         self._award_xp("prayer", prayer_xp, self.player.rect.centerx, self.player.rect.top)
         self.ui.show_message("You buried a bone.")
@@ -510,32 +548,40 @@ class GameManager:
             self._handle_dialogue_response(node_id, response_idx)
 
         elif action == "use_item":
-            active_items = self._get_active_inventory(self.player.inventory, exclude_coins=True)
-            if 0 <= index < len(active_items):
-                item_name, _ = active_items[index]
-                success, msg = self.player.use_item(item_name)
-                self.ui.show_message(msg)
+            if 0 <= index < self.player.inventory.MAX_SLOTS:
+                pair = self.player.inventory.get_slot(index)
+                if pair and pair[0] != "coins":
+                    success, msg = self.player.use_item_at_slot(index)
+                    self.ui.show_message(msg)
 
         elif action == "deposit_item":
-            active_items = self._get_active_inventory(self.player.inventory)
-            if 0 <= index < len(active_items):
-                item_name, _ = active_items[index]
-                self.player.inventory.remove_item(item_name, 1)
-                self.player.bank_inventory.add_item(item_name, 1)
+            pair = self.player.inventory.get_slot(index)
+            if pair:
+                item_name, _ = pair
+                if self.player.bank_inventory.add_item(item_name, 1):
+                    self.player.inventory.remove_from_slot(index, 1)
 
         elif action == "withdraw_item":
-            active_items = self._get_active_inventory(self.player.bank_inventory)
-            if 0 <= index < len(active_items):
-                item_name, _ = active_items[index]
+            pair = self.player.bank_inventory.get_slot(index)
+            if pair:
+                item_name, _ = pair
                 if self.player.inventory.add_item(item_name, 1):
-                    self.player.bank_inventory.remove_item(item_name, 1)
+                    self.player.bank_inventory.remove_from_slot(index, 1)
                 else:
                     self.ui.show_message("Your inventory is full.")
 
+        elif action == "inv_drag_drop":
+            src, dst = index
+            if 0 <= src < self.player.inventory.MAX_SLOTS and 0 <= dst < self.player.inventory.MAX_SLOTS:
+                self.player.inventory.merge_or_swap(src, dst)
+
+        elif action == "inv_split":
+            self._inv_split_slot(index)
+
         elif action == "shop_buy_item":
-            shop_items = self._get_active_inventory(self.shop.inventory)
-            if 0 <= index < len(shop_items):
-                item_name, _ = shop_items[index]
+            pair = self.shop.inventory.get_slot(index)
+            if pair:
+                item_name, _ = pair
                 price = self.shop.get_buy_price(item_name)
                 coins = self.player.inventory.get_item_count("coins")
                 if coins < price:
@@ -544,37 +590,33 @@ class GameManager:
                     self.ui.show_message("Your inventory is full.")
                 else:
                     self.player.inventory.remove_item("coins", price)
-                    self.shop.inventory.remove_item(item_name, 1)
+                    self.shop.inventory.remove_from_slot(index, 1)
                     self.ui.show_message(f"Bought 1 {item_name.replace('_', ' ')} for {price} coins.")
 
         elif action == "shop_sell_item":
-            active_items = self._get_active_inventory(self.player.inventory)
-            if 0 <= index < len(active_items):
-                item_name, _ = active_items[index]
+            pair = self.player.inventory.get_slot(index)
+            if pair:
+                item_name, _ = pair
                 if item_name == "coins":
                     self.ui.show_message("You can't sell coins.")
                 elif not self.shop.can_sell_item(item_name):
                     self.ui.show_message("The shop won't buy that item.")
                 else:
                     price = self.shop.get_sell_price(item_name)
-                    self.player.inventory.remove_item(item_name, 1)
+                    self.player.inventory.remove_from_slot(index, 1)
                     self.player.inventory.add_item("coins", price)
                     self.shop.inventory.add_item(item_name, 1)
                     self.ui.show_message(f"Sold 1 {item_name.replace('_', ' ')} for {price} coins.")
 
         elif action == "right_click_inventory":
             if event.type == pygame.MOUSEBUTTONDOWN and self.ui.active_tab == "inventory":
-                rects = self.ui.get_inventory_slot_rects()
-                for i, rect in enumerate(rects):
-                    if rect.collidepoint(event.pos):
-                        self._show_inventory_context_menu(event.pos, i)
-                        break
-                else:
-                    equipped_rects = self.ui.get_equipped_slot_rects()
-                    for i, rect in enumerate(equipped_rects):
-                        if rect.collidepoint(event.pos):
-                            self._show_equipped_context_menu(event.pos, i)
-                            break
+                self.ui.inv_press_slot = None
+                self._show_inventory_context_menu(event.pos, index)
+
+        elif action == "right_click_equipped":
+            if event.type == pygame.MOUSEBUTTONDOWN and self.ui.active_tab == "inventory":
+                self.ui.inv_press_slot = None
+                self._show_equipped_context_menu(event.pos, index)
 
         elif action == "craft_item":
             recipes = self.recipe_manager.get_handcrafted()
@@ -652,7 +694,7 @@ class GameManager:
             elif event.type == pygame.MOUSEWHEEL:
                 if self.ui.active_tab == "skills":
                     self.ui.scroll_skills(event.y)
-            elif event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN):
+            elif event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
                 self._handle_mouse_event(event)
             elif event.type == pygame.KEYDOWN:
                 self._handle_keydown(event)
@@ -756,22 +798,22 @@ class GameManager:
                     self._craft_hand_make_all(recipes[self.ui.crafting_index])
 
     def _handle_inventory_input(self, event):
-        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
-        
+        from src.ui.ui import INV_COLS, INV_NUM_SLOTS
+
         if event.key == pygame.K_ESCAPE or event.key == pygame.K_i:
             self.ui.active_tab = None
         elif event.key == pygame.K_UP:
-            self.ui.inventory_index = max(0, self.ui.inventory_index - 6)
+            self.ui.inventory_index = max(0, self.ui.inventory_index - INV_COLS)
         elif event.key == pygame.K_DOWN:
-            self.ui.inventory_index = min(len(active_items) - 1, self.ui.inventory_index + 6)
+            self.ui.inventory_index = min(INV_NUM_SLOTS - 1, self.ui.inventory_index + INV_COLS)
         elif event.key == pygame.K_LEFT:
             self.ui.inventory_index = max(0, self.ui.inventory_index - 1)
         elif event.key == pygame.K_RIGHT:
-            self.ui.inventory_index = min(len(active_items) - 1, self.ui.inventory_index + 1)
+            self.ui.inventory_index = min(INV_NUM_SLOTS - 1, self.ui.inventory_index + 1)
         elif event.key == pygame.K_RETURN:
-            if 0 <= self.ui.inventory_index < len(active_items):
-                item_name, _ = active_items[self.ui.inventory_index]
-                success, msg = self.player.use_item(item_name)
+            pair = self.player.inventory.get_slot(self.ui.inventory_index)
+            if pair and pair[0] != "coins":
+                success, msg = self.player.use_item_at_slot(self.ui.inventory_index)
                 self.ui.show_message(msg)
             else:
                 self.ui.show_message("No item selected.")
@@ -780,11 +822,17 @@ class GameManager:
         if event.key == pygame.K_ESCAPE or event.key == pygame.K_e:
             self.ui.active_bank = False
         elif event.key == pygame.K_t:
+            blocked = False
             for item, count in list(self.player.inventory.items.items()):
                 if count > 0:
-                    self.player.bank_inventory.add_item(item, count)
-                    self.player.inventory.items[item] = 0
-            self.ui.show_message("Deposited all items into bank.")
+                    if self.player.bank_inventory.add_item(item, count):
+                        self.player.inventory.remove_item(item, count)
+                    else:
+                        self.ui.show_message("Your bank cannot hold any more item types.")
+                        blocked = True
+                        break
+            if not blocked:
+                self.ui.show_message("Deposited all items into bank.")
 
     def _handle_shop_input(self, event):
         """Handle shop interaction input (buy/sell items)."""

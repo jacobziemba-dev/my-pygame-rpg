@@ -366,31 +366,44 @@ class Player(Entity):
             return False, f"You need {skill_name.capitalize()} Lv.{level_required} to wield this."
         return True, ""
 
+    def use_item_at_slot(self, slot_index):
+        pair = self.inventory.get_slot(slot_index)
+        if not pair:
+            return False, "Nothing there."
+        item_name, _count = pair
+        if item_name == "bread":
+            self.hp = min(self.max_hp, self.hp + 20)
+            self.inventory.remove_from_slot(slot_index, 1)
+            return True, "Healed 20 HP!"
+        if item_name == "cooked_fish":
+            self.hp = min(self.max_hp, self.hp + 15)
+            self.inventory.remove_from_slot(slot_index, 1)
+            return True, "Healed 15 HP with cooked fish!"
+        equippable = [
+            "sword", "iron_sword", "iron_armor", "iron_axe", "iron_pickaxe",
+            "steel_sword", "steel_armor", "steel_axe", "steel_pickaxe", "shortbow", "staff_of_air",
+        ]
+        if item_name in equippable:
+            meets_req, req_msg = self._check_item_requirement(item_name)
+            if not meets_req:
+                return False, req_msg
+            if item_name not in self.equipped_items:
+                self.inventory.remove_from_slot(slot_index, 1)
+                self.equipped_items.append(item_name)
+                if "bow" in item_name:
+                    self.set_combat_mode("ranged")
+                elif "staff" in item_name:
+                    self.set_combat_mode("magic")
+                return True, f"Equipped {item_name.replace('_', ' ').title()}!"
+        return False, "Cannot use this item."
+
     def use_item(self, item_name):
-        if self.inventory.items.get(item_name, 0) > 0:
-            if item_name == "bread":
-                self.hp = min(self.max_hp, self.hp + 20)
-                self.inventory.remove_item(item_name, 1)
-                return True, "Healed 20 HP!"
-            if item_name == "cooked_fish":
-                self.hp = min(self.max_hp, self.hp + 15)
-                self.inventory.remove_item(item_name, 1)
-                return True, "Healed 15 HP with cooked fish!"
-            # For gear, equip it
-            equippable = ["sword", "iron_sword", "iron_armor", "iron_axe", "iron_pickaxe",
-                          "steel_sword", "steel_armor", "steel_axe", "steel_pickaxe", "shortbow", "staff_of_air"]
-            if item_name in equippable:
-                meets_req, req_msg = self._check_item_requirement(item_name)
-                if not meets_req:
-                    return False, req_msg
-                if item_name not in self.equipped_items:
-                    self.inventory.remove_item(item_name, 1)
-                    self.equipped_items.append(item_name)
-                    if "bow" in item_name:
-                        self.set_combat_mode("ranged")
-                    elif "staff" in item_name:
-                        self.set_combat_mode("magic")
-                    return True, f"Equipped {item_name.replace('_', ' ').title()}!"
+        if self.inventory.get_item_count(item_name) <= 0:
+            return False, "Cannot use this item."
+        for i in range(self.inventory.MAX_SLOTS):
+            p = self.inventory.get_slot(i)
+            if p and p[0] == item_name:
+                return self.use_item_at_slot(i)
         return False, "Cannot use this item."
 
     def unequip_item(self, item_name):

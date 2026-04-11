@@ -56,6 +56,50 @@ EQUIPMENT_REQUIREMENTS = {
     "staff_of_air": ("magic", 1),
 }
 
+# Inventory UI: equippable ids (align with Player.use_item)
+EQUIPPABLE_ITEM_IDS = frozenset(
+    {
+        "sword",
+        "iron_sword",
+        "iron_armor",
+        "iron_axe",
+        "iron_pickaxe",
+        "steel_sword",
+        "steel_armor",
+        "steel_axe",
+        "steel_pickaxe",
+        "shortbow",
+        "staff_of_air",
+    }
+)
+
+FOOD_ITEM_IDS = frozenset({"bread", "cooked_fish"})
+
+
+def inventory_context_use_verb(item_id):
+    if item_id in FOOD_ITEM_IDS:
+        return "Eat"
+    if item_id in EQUIPPABLE_ITEM_IDS:
+        return "Wear" if "armor" in item_id else "Wield"
+    return "Use"
+
+
+# Hover tooltip / examine lines: item_id -> list of description lines
+ITEM_TOOLTIPS = {
+    "bread": ["A loaf of bread.", "Eat to heal some life points."],
+    "cooked_fish": ["Some nicely cooked fish.", "Eat to heal life points."],
+    "bones": ["Bones are for burying.", "Bury for Prayer experience."],
+    "coins": ["Lovely money!", "Used to buy items from shops."],
+    "iron_sword": ["A razor-sharp longsword.", "Requires Attack level 5."],
+    "steel_sword": ["A sturdy steel blade.", "Requires Attack level 20."],
+    "iron_armor": ["Solid iron protection.", "Requires Defense level 10."],
+    "steel_armor": ["Heavy steel plating.", "Requires Defense level 20."],
+    "shortbow": ["A simple wooden bow.", "Requires arrows to fire."],
+    "staff_of_air": ["A staff charged with air magic.", "Wield to cast spells."],
+    "arrow": ["Ammunition for bows.", "Used with ranged combat."],
+    "arrows": ["Ammunition for bows.", "Used with ranged combat."],
+}
+
 # Enemy type definitions
 # drops: list of (item_name, min_amount, max_amount, chance)
 ENEMY_TYPE_STATS = {

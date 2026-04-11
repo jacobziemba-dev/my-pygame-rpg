@@ -23,8 +23,8 @@ class SaveManager:
                 "equipped_items": getattr(player, 'equipped_items', []),
                 "combat_mode":   getattr(player, 'combat_mode',  "melee"),
                 "combat_style":  getattr(player, 'combat_style', "aggressive"),
-                "inventory": player.inventory.items,
-                "bank_inventory": player.bank_inventory.items,
+                "inventory": player.inventory.to_save_dict(),
+                "bank_inventory": player.bank_inventory.to_save_dict(),
                 "skills": player.skills.to_dict()
             },
             "resources": [
@@ -96,8 +96,8 @@ class SaveManager:
         player.combat_mode  = p_data.get("combat_mode",  default_mode)
         default_style = "rapid" if player.combat_mode == "ranged" else "aggressive"
         player.combat_style = p_data.get("combat_style", default_style)
-        player.inventory.items = p_data.get("inventory", {})
-        player.bank_inventory.items = p_data.get("bank_inventory", {})
+        player.inventory.load_from_save(p_data.get("inventory", {}))
+        player.bank_inventory.load_from_save(p_data.get("bank_inventory", {}))
         player.skills = SkillManager.from_dict(p_data.get("skills", {}))
         
         # load resources
