@@ -1,0 +1,47 @@
+{
+  "baker_start": {
+    "npc": "Baker",
+    "text": "Hello there! I'm struggling right now, could you help me out?",
+    "responses": [
+      {"text": "What do you need help with?", "next": "baker_explain"},
+      {"text": "Not right now, sorry.", "next": "END"}
+    ]
+  },
+  "baker_explain": {
+    "npc": "Baker",
+    "text": "I need 1 Egg, 1 Milk, and 1 Wheat to bake my famous cake. Will you find them for me?",
+    "responses": [
+      {"text": "I'll do it.", "next": "baker_accept", "action": "start_quest_bakers_assistant"},
+      {"text": "That sounds like too much work.", "next": "END"}
+    ]
+  },
+  "baker_accept": {
+    "npc": "Baker",
+    "text": "Oh, thank you! I'll be waiting here.",
+    "responses": [
+      {"text": "Goodbye.", "next": "END"}
+    ]
+  },
+  "baker_progress": {
+    "npc": "Baker",
+    "text": "Do you have my ingredients yet?",
+    "responses": [
+      {"text": "Here they are.", "next": "baker_check_items", "condition": {"type": "has_items", "items": {"egg": 1, "milk": 1, "wheat": 1}}},
+      {"text": "Still working on it.", "next": "END"}
+    ]
+  },
+  "baker_check_items": {
+    "npc": "Baker",
+    "text": "Perfect! This is exactly what I need. You're a lifesaver!",
+    "responses": [
+      {"text": "You're welcome.", "next": "END", "action": "complete_quest_bakers_assistant"}
+    ]
+  },
+  "baker_finished": {
+    "npc": "Baker",
+    "text": "Thanks again for the help! Best of luck on your travels.",
+    "responses": [
+      {"text": "Goodbye.", "next": "END"}
+    ]
+  }
+}

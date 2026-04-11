@@ -1,0 +1,18 @@
+{
+  "bakers_assistant": {
+    "id": "bakers_assistant",
+    "name": "The Baker's Assistant",
+    "points": 1,
+    "description": "The local Baker needs help acquiring ingredients.",
+    "objectives": [
+      "Talk to the Baker.",
+      "Bring the Baker 1 Egg.",
+      "Bring the Baker 1 Milk.",
+      "Bring the Baker 1 Wheat."
+    ],
+    "rewards": [
+      {"type": "xp", "skill": "cooking", "amount": 100},
+      {"type": "unlock", "id": "high_tier_stove", "name": "Access to high-tier stove"}
+    ]
+  }
+}

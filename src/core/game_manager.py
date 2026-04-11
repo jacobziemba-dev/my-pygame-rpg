@@ -960,34 +960,31 @@ class GameManager:
                                 self.ui.show_message("No active spell!")
                                 self.player.current_action = None
                                 self.player.action_target = None
-                                continue
-                                
-                            if self.player.skills.magic.level < spell["req"]:
+                            elif self.player.skills.magic.level < spell["req"]:
                                 self.ui.show_message(f"Requires Magic Lv.{spell['req']}.")
                                 self.player.current_action = None
                                 self.player.action_target = None
-                                continue
-                                
-                            has_runes = True
-                            for rune, amt in spell["cost"].items():
-                                if self.player.inventory.items.get(rune, 0) < amt:
-                                    has_runes = False
-                                    break
-                                    
-                            if has_runes:
-                                for rune, amt in spell["cost"].items():
-                                    self.player.inventory.remove_item(rune, amt)
-                                magic_hit = spell["max_hit"] + (self.player.skills.magic.level // 4)
-                                proj = Projectile(
-                                    self.player.rect.centerx, self.player.rect.centery,
-                                    enemy, magic_hit
-                                )
-                                proj.color = (0, 200, 255)
-                                self.projectiles.append(proj)
                             else:
-                                self.ui.show_message("Not enough runes!")
-                                self.player.current_action = None
-                                self.player.action_target = None
+                                has_runes = True
+                                for rune, amt in spell["cost"].items():
+                                    if self.player.inventory.items.get(rune, 0) < amt:
+                                        has_runes = False
+                                        break
+                                        
+                                if has_runes:
+                                    for rune, amt in spell["cost"].items():
+                                        self.player.inventory.remove_item(rune, amt)
+                                    magic_hit = spell["max_hit"] + (self.player.skills.magic.level // 4)
+                                    proj = Projectile(
+                                        self.player.rect.centerx, self.player.rect.centery,
+                                        enemy, magic_hit
+                                    )
+                                    proj.color = (0, 200, 255)
+                                    self.projectiles.append(proj)
+                                else:
+                                    self.ui.show_message("Not enough runes!")
+                                    self.player.current_action = None
+                                    self.player.action_target = None
                         else:
                             self.player.target_destination = (enemy.rect.centerx, enemy.rect.centery)
                             self.player.waypoints = []
