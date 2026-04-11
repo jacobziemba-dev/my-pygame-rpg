@@ -24,11 +24,16 @@ PLAYER_START_X = 1216
 PLAYER_START_Y = 1216
 PLAYER_SPEED = 4
 ARRIVE_THRESHOLD = 6  # arrival dead zone; slightly > PLAYER_SPEED to prevent oscillation
+# Resource gathering: player rect must collide with node.rect inflated by this (total px added to w/h).
+GATHERING_REACH_INFLATE = 40
 PLAYER_MAX_HP = 100
-# Drawn size for player animation frames (knight pack cells are 128×128). Collision/pathfinding still use TILE_SIZE.
+# Drawn size for player animation frames (knight pack cells are 128×128).
 PLAYER_SPRITE_SIZE = 128
 # Horizontal strip: native cell size in assets/sprites/2D HD Character Knight/Spritesheets/With shadows/*.png
 PLAYER_SHEET_FRAME_WIDTH = 128
+# Movement hitbox — must align with TILE_SIZE grid; larger boxes wedge between adjacent solids.
+PLAYER_COLLISION_WIDTH = TILE_SIZE
+PLAYER_COLLISION_HEIGHT = TILE_SIZE
 
 # Entity colors
 COLOR_PLAYER = (0, 128, 255)

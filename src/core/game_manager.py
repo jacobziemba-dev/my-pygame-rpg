@@ -8,12 +8,12 @@ from src.entities.bank import Bank
 from src.entities.station import Station
 from src.ui.ui import UIManager
 from src.entities.enemy import Enemy
-from src.entities.entity import resolve_collision_x, resolve_collision_y
+from src.entities.entity import resolve_collision_x, resolve_collision_y, depenetrate_rect
 from src.entities.crop import Crop
 from src.core.camera import Camera
 from src.systems.save_manager import SaveManager
 from src.systems.action_manager import ActionManager
-from src.systems.pathfinder import find_path
+from src.systems.pathfinder import find_path, nearest_walkable_world
 from src.systems.recipe_manager import RecipeManager
 from src.entities.projectile import Projectile
 from src.entities.shop import Shop
@@ -39,7 +39,7 @@ class GameManager:
         # 3. UI and Actions
         self.ui = UIManager(self)
         self.action_manager = ActionManager(self.ui, self.camera)
-        self.last_tick = pygame.time.get_ticks()
+        self.action_tick_accumulator = 0.0
         self._last_frame_ms = 0.0
         
         # 4. Other Game objects
@@ -159,7 +159,7 @@ class GameManager:
         self.ui.is_fading = False
         self.ui.context_menu = None
         self.action_manager = ActionManager(self.ui, self.camera)
-        self.last_tick = pygame.time.get_ticks()
+        self.action_tick_accumulator = 0.0
         self.ui.show_message("You have been recovered!")
 
     def _award_xp(self, skill_name, amount, world_x=None, world_y=None):
@@ -170,7 +170,7 @@ class GameManager:
         if world_x is None:
             world_x = self.player.rect.centerx
         if world_y is None:
-            world_y = self.player.rect.top
+            world_y = self.player.sprite_top_y
         self.ui.add_xp_drop(skill_name, amount, world_x, world_y, self.camera)
         return leveled_up
 
@@ -186,39 +186,103 @@ class GameManager:
         pygame.quit()
 
     def _find_entity_at_world(self, world_x, world_y):
-        """Return the topmost entity at world coordinates, or None."""
-        click_rect = pygame.Rect(world_x - 5, world_y - 5, 10, 10)
+        """Return the topmost entity under the clicked map tile, or None."""
+        gx = int(world_x // TILE_SIZE)
+        gy = int(world_y // TILE_SIZE)
+        cell = pygame.Rect(gx * TILE_SIZE, gy * TILE_SIZE, TILE_SIZE, TILE_SIZE)
         for item in self.resources:
-            if click_rect.colliderect(item.rect):
+            if item.rect.colliderect(cell):
                 return item
         for enemy in self.enemies:
-            if click_rect.colliderect(enemy.rect):
+            if enemy.rect.colliderect(cell):
                 return enemy
-        if click_rect.colliderect(self.shop.rect):
+        if self.shop.rect.colliderect(cell):
             return self.shop
-        if click_rect.colliderect(self.bank.rect):
+        if self.bank.rect.colliderect(cell):
             return self.bank
         for npc in self.npcs:
-            if click_rect.colliderect(npc.rect):
+            if npc.rect.colliderect(cell):
                 return npc
         for station in self.stations:
-            if click_rect.colliderect(station.rect):
+            if station.rect.colliderect(cell):
                 return station
         for crop in self.crops:
-            if click_rect.colliderect(crop.rect):
+            if crop.rect.colliderect(cell):
                 return crop
         return None
 
+    def _try_begin_gathering(self, node):
+        """Delegate to ActionManager; used on arrival and from E-interact."""
+        return self.action_manager.try_begin_gathering(self.player, node)
+
     def _pathfind_to_entity(self, world_x, world_y, entity=None, action_type="default"):
-        # Use full_map=True to ensure we see all water obstacles for pathfinding
         obstacles = self._get_solid_obstacles(full_map=True)
-        path = find_path(
-            (self.player.rect.centerx, self.player.rect.centery),
-            (world_x, world_y),
-            obstacles,
-            self.tilemap.world_map
+        start = (self.player.rect.centerx, self.player.rect.centery)
+        goal = (world_x, world_y)
+        tilemap = self.tilemap.world_map
+
+        path = find_path(start, goal, obstacles, tilemap)
+        if path:
+            self.player.set_target_destination(
+                world_x, world_y, target_entity=entity, waypoints=path, action_type=action_type
+            )
+            return
+
+        if entity is not None and isinstance(entity, ResourceNode):
+            result = self.action_manager.try_begin_gathering(self.player, entity)
+            if result == "started":
+                return
+            if result == "invalid":
+                return
+            nw = nearest_walkable_world(
+                (entity.rect.centerx, entity.rect.centery), obstacles, tilemap
+            )
+            if nw is None:
+                self.ui.show_message("You can't reach that.")
+                return
+            path2 = find_path(start, nw, obstacles, tilemap)
+            if path2:
+                self.player.set_target_destination(
+                    nw[0], nw[1], target_entity=entity, waypoints=path2, action_type=action_type
+                )
+                return
+            result2 = self.action_manager.try_begin_gathering(self.player, entity)
+            if result2 == "started":
+                return
+            self.ui.show_message("You can't reach that.")
+            return
+
+        if entity is not None:
+            nw = nearest_walkable_world(
+                (entity.rect.centerx, entity.rect.centery), obstacles, tilemap
+            )
+            if nw is None:
+                self.ui.show_message("You can't reach that.")
+                return
+            path2 = find_path(start, nw, obstacles, tilemap)
+            if path2:
+                self.player.set_target_destination(
+                    nw[0], nw[1], target_entity=entity, waypoints=path2, action_type=action_type
+                )
+                return
+            self.player.set_target_destination(
+                nw[0], nw[1], target_entity=entity, waypoints=None, action_type=action_type
+            )
+            return
+
+        nw = nearest_walkable_world(goal, obstacles, tilemap)
+        if nw is None:
+            self.ui.show_message("You can't reach that.")
+            return
+        path_g = find_path(start, nw, obstacles, tilemap)
+        if path_g:
+            self.player.set_target_destination(
+                nw[0], nw[1], target_entity=None, waypoints=path_g, action_type=action_type
+            )
+            return
+        self.player.set_target_destination(
+            nw[0], nw[1], target_entity=None, waypoints=None, action_type=action_type
         )
-        self.player.set_target_destination(world_x, world_y, target_entity=entity, waypoints=path or None, action_type=action_type)
 
     def _update_chase_destination(self, enemy):
         """Pathfind toward enemy without clearing current_action/action_target.
@@ -480,7 +544,7 @@ class GameManager:
             return
         self.player.inventory.remove_from_slot(slot_index, 1)
         prayer_xp = 4
-        self._award_xp("prayer", prayer_xp, self.player.rect.centerx, self.player.rect.top)
+        self._award_xp("prayer", prayer_xp, self.player.rect.centerx, self.player.sprite_top_y)
         self.ui.show_message("You buried a bone.")
 
             
@@ -503,7 +567,7 @@ class GameManager:
             self.player.inventory.remove_item("milk", 1)
             self.player.inventory.remove_item("wheat", 1)
             self.player.quest_manager.complete_quest("bakers_assistant")
-            self._award_xp("cooking", 100, self.player.rect.centerx, self.player.rect.top)
+            self._award_xp("cooking", 100, self.player.rect.centerx, self.player.sprite_top_y)
             self.ui.show_message("Quest Complete: The Baker's Assistant!")
             baker_npc = next((n for n in self.npcs if n.name == "Baker"), None)
             if baker_npc:
@@ -924,7 +988,7 @@ class GameManager:
                         recipe = station.pending_recipe
                         skill_name = recipe.get("skill", "crafting")
                         xp_total = recipe["xp"] * collected
-                        leveled_up = self._award_xp(skill_name, xp_total, self.player.rect.centerx, self.player.rect.top)
+                        leveled_up = self._award_xp(skill_name, xp_total, self.player.rect.centerx, self.player.sprite_top_y)
                         msg = f"Collected {collected} items! (+{xp_total} {skill_name.capitalize()} XP)"
                         if leveled_up:
                             lvl = getattr(self.player.skills, skill_name).level
@@ -948,10 +1012,8 @@ class GameManager:
                         self.resources.remove(item)
                     else:
                         self.ui.show_message("Your inventory is full.")
-                elif isinstance(item, ResourceNode) and item.is_active:
-                    self.player.current_action = "gathering"
-                    self.player.action_target = item
-                    self.ui.show_message(f"Started gathering {item.node_type}...")
+                elif isinstance(item, ResourceNode):
+                    self._try_begin_gathering(item)
                 return
 
     def _farm(self):
@@ -965,7 +1027,7 @@ class GameManager:
                     self.ui.show_message("Your inventory is full.")
                     return
                 self.crops.remove(target_crop)
-                if self._award_xp("farming", 20, self.player.rect.centerx, self.player.rect.top):
+                if self._award_xp("farming", 20, self.player.rect.centerx, self.player.sprite_top_y):
                     self.ui.show_message("Farming Level UP!")
                 self.ui.show_message(f"Harvested {target_crop.crop_type}!")
             else:
@@ -1137,11 +1199,14 @@ class GameManager:
             obstacles = self._get_solid_obstacles()
             if self.ui.active_tab != "crafting":
                 self.player.update(dt)
-                # Resolve player collision against enemies (player can't walk through them)
+                # Trees, stations, water, NPCs, etc. + enemies (axis-separated AABB)
                 enemy_rects = [e.rect for e in self.enemies]
-                if enemy_rects:
-                    resolve_collision_x(self.player.rect, enemy_rects)
-                    resolve_collision_y(self.player.rect, enemy_rects)
+                solid = obstacles + enemy_rects
+                if solid:
+                    for _ in range(2):
+                        resolve_collision_x(self.player.rect, solid)
+                        resolve_collision_y(self.player.rect, solid)
+                    depenetrate_rect(self.player.rect, solid)
                 # OSRS: trigger combat as soon as player is adjacent to target enemy
                 # (don't require reaching the exact center tile of the enemy)
                 if (self.player.interaction_target and
@@ -1161,10 +1226,10 @@ class GameManager:
             for station in self.stations:
                 station.update()
             
-            # Action Manager Ticks (once per 600ms)
-            current_time = pygame.time.get_ticks()
-            if current_time - self.last_tick >= 600:
-                self.last_tick = current_time
+            # Action Manager Ticks — fixed 600ms steps (dt-accumulated, max one tick per frame)
+            self.action_tick_accumulator += dt
+            if self.action_tick_accumulator >= 0.6:
+                self.action_tick_accumulator -= 0.6
                 if self.player.current_action == "gathering" and self.player.action_target:
                     self.action_manager.process_gathering_tick(self.player, self.player.action_target)
                 elif self.player.current_action == "attacking" and self.player.action_target:
@@ -1241,9 +1306,9 @@ class GameManager:
                             if is_hit:
                                 enemy.hp -= dmg
                                 primary, secondary = self.player.get_xp_skill_for_hit()
-                                self._award_xp(primary, 5, self.player.rect.centerx, self.player.rect.top)
+                                self._award_xp(primary, 5, self.player.rect.centerx, self.player.sprite_top_y)
                                 if secondary:
-                                    self._award_xp(secondary, 2, self.player.rect.centerx, self.player.rect.top)
+                                    self._award_xp(secondary, 2, self.player.rect.centerx, self.player.sprite_top_y)
                                 self.ui.show_message(f"Hit {enemy.name} for {dmg}!")
                                 if enemy.hp <= 0:
                                     self._kill_enemy(enemy)
@@ -1271,7 +1336,7 @@ class GameManager:
                     dmg = random.randint(1, enemy.max_hit)
                     if self.player.take_damage(dmg):
                         actual = max(1, dmg - self.player.get_defense())
-                        self._award_xp("defense", 3, self.player.rect.centerx, self.player.rect.top)
+                        self._award_xp("defense", 3, self.player.rect.centerx, self.player.sprite_top_y)
                         self.ui.show_message(f"{enemy.name} hits you for {actual}!")
                         # Auto-retaliate: fight back automatically when idle (OSRS default)
                         if self.player.current_action is None:
@@ -1288,9 +1353,9 @@ class GameManager:
                         if is_hit:
                             proj.target.hp -= dmg
                             primary, secondary = self.player.get_xp_skill_for_hit()
-                            leveled_up = self._award_xp(primary, 4, self.player.rect.centerx, self.player.rect.top)
+                            leveled_up = self._award_xp(primary, 4, self.player.rect.centerx, self.player.sprite_top_y)
                             if secondary:
-                                self._award_xp(secondary, 2, self.player.rect.centerx, self.player.rect.top)
+                                self._award_xp(secondary, 2, self.player.rect.centerx, self.player.sprite_top_y)
                             self.ui.show_message(f"Hit {proj.target.name} for {dmg}!")
                             if leveled_up:
                                 lvl = getattr(self.player.skills, primary).level

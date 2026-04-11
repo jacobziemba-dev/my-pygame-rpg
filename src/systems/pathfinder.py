@@ -34,6 +34,22 @@ def find_path(start_world, end_world, obstacles, tile_map=None):
     return [_grid_to_world(p) for p in path]
 
 
+def nearest_walkable_world(goal_world, obstacles, tile_map=None):
+    """Return world coords (tile center) of the nearest walkable position to goal_world.
+
+    If goal_world is already on a walkable tile, returns that tile's center.
+    If the surrounding area is fully blocked, returns None.
+    """
+    blocked = _build_grid(obstacles, tile_map)
+    g = _clamp(_world_to_grid(goal_world))
+    if not blocked[g[1]][g[0]]:
+        return _grid_to_world(g)
+    nw = _nearest_walkable(blocked, g)
+    if nw is None:
+        return None
+    return _grid_to_world(nw)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------

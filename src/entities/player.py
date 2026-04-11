@@ -10,6 +10,7 @@ from src.entities.bank import Bank
 from src.entities.shop import Shop
 from src.systems.quest_manager import QuestManager
 from src.entities.npc import NPC
+from src.entities.resource_node import ResourceNode
 
 # 2D HD Character Knight — Spritesheets/With shadows/*.png (128×128 cells).
 # Maps logical names to files; "sit_down" is not included in this pack.
@@ -52,7 +53,9 @@ KNIGHT_ANIMATION_SOURCES = {
 
 class Player(Entity): 
     def __init__(self, x, y, game_manager):
-        super().__init__(x, y, TILE_SIZE, TILE_SIZE, game_manager)
+        super().__init__(x, y, PLAYER_COLLISION_WIDTH, PLAYER_COLLISION_HEIGHT, game_manager)
+        # Legacy spawn args were top-left of a TILE_SIZE cell; keep world position stable
+        self.rect.center = (x + TILE_SIZE // 2, y + TILE_SIZE // 2)
         self.quest_manager = QuestManager()
         self.color = COLOR_PLAYER
         self.speed = PLAYER_SPEED
@@ -184,6 +187,17 @@ class Player(Entity):
                     suf = self._cardinal_suffix_from_vector(dx, dy)
             self.facing = suf
             self.status = "attack" + suf
+        elif self.current_action == "gathering" and self.action_target is not None and hasattr(
+            self.action_target, "rect"
+        ):
+            suf = self.facing
+            t = self.action_target
+            dx = t.rect.centerx - self.rect.centerx
+            dy = t.rect.centery - self.rect.centery
+            if dx != 0 or dy != 0:
+                suf = self._cardinal_suffix_from_vector(dx, dy)
+            self.facing = suf
+            self.status = "walk" + suf
         elif self.direction.magnitude() > 0:
             self.facing = self._cardinal_suffix_from_vector(self.direction.x, self.direction.y)
             self.status = "walk" + self.facing
@@ -259,7 +273,6 @@ class Player(Entity):
         self.action_target = None
 
     def update(self, dt):
-        moved = False
         self.direction.xy = (0, 0)
         if self.target_destination:
             tx, ty = self.target_destination
@@ -275,7 +288,6 @@ class Player(Entity):
                 self.direction.y = dy_norm
                 self.rect.x += dx_norm * self.speed * dt * 60
                 self.rect.y += dy_norm * self.speed * dt * 60
-                moved = True
             else:
                 if self.waypoints:
                     # Intermediate waypoint reached — advance to next, no interaction yet
@@ -288,12 +300,8 @@ class Player(Entity):
                     self.move_marker_pos = None  # Reached destination, clear marker
 
                     if self.interaction_target:
-                        if hasattr(self.interaction_target, 'is_active') and self.interaction_target.is_active:
-                             # It's a resource node
-                             self.current_action = "gathering"
-                             self.action_target = self.interaction_target
-                             if hasattr(self.game_manager, 'ui'):
-                                 self.game_manager.ui.show_message(f"Started gathering {self.interaction_target.node_type}...")
+                        if isinstance(self.interaction_target, ResourceNode):
+                            self.game_manager._try_begin_gathering(self.interaction_target)
                         elif hasattr(self.interaction_target, 'hp') and hasattr(self.interaction_target, 'max_hp'):
                              # It's an enemy
                              self.current_action = "attacking"
@@ -382,10 +390,6 @@ class Player(Entity):
                     
 
         # Keyboard fallback removed (forced click-to-move for RS feel)
-            
-        if moved and self.current_action is not None and not self.target_destination:
-            self.current_action = None
-            self.action_target = None
 
         self.get_status()
         self.animate(dt)
@@ -395,7 +399,9 @@ class Player(Entity):
     def draw(self, surface, camera=None):
         draw_rect = camera.apply(self.rect) if camera else self.rect
         if self.image:
-            surface.blit(self.image, self.image.get_rect(center=draw_rect.center))
+            # Feet on collision footprint; sprite extends upward (fixes overlap vs 32×32 center blit)
+            img_rect = self.image.get_rect(midbottom=draw_rect.midbottom)
+            surface.blit(self.image, img_rect)
 
         # Draw movement target indicator (RS-style yellow X)
         if self.move_marker_pos:
@@ -417,6 +423,10 @@ class Player(Entity):
             else:
                 self.move_marker_pos = None
 
+    @property
+    def sprite_top_y(self):
+        """World Y of the top edge of the drawn sprite (feet aligned to rect.bottom)."""
+        return self.rect.bottom - PLAYER_SPRITE_SIZE
 
     def take_damage(self, amount):
         current_time = pygame.time.get_ticks()

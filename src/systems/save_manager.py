@@ -6,6 +6,7 @@ from src.entities.resource_node import ResourceNode
 from src.entities.enemy import Enemy
 from src.entities.crop import Crop
 from src.systems.skill_manager import SkillManager
+from src.core.settings import TILE_SIZE
 
 SAVE_FILE = os.path.join("data", "save.json")
 
@@ -14,8 +15,8 @@ class SaveManager:
     def save_game(player, resources, enemies):
         data = {
             "player": {
-                "x": player.rect.x,
-                "y": player.rect.y,
+                "centerx": player.rect.centerx,
+                "centery": player.rect.centery,
                 "hp": player.hp,
                 "max_hp": player.max_hp,
                 "base_attack": getattr(player, 'base_attack', 5),
@@ -84,8 +85,13 @@ class SaveManager:
             
         # load player
         p_data = data["player"]
-        player.rect.x = p_data["x"]
-        player.rect.y = p_data["y"]
+        if "centerx" in p_data and "centery" in p_data:
+            player.rect.centerx = p_data["centerx"]
+            player.rect.centery = p_data["centery"]
+        else:
+            # Legacy: x,y were top-left of old 32×32 player rect
+            player.rect.centerx = p_data["x"] + TILE_SIZE // 2
+            player.rect.centery = p_data["y"] + TILE_SIZE // 2
         player.hp = p_data["hp"]
         player.max_hp = p_data["max_hp"]
         player.base_attack = p_data.get("base_attack", 5)
