@@ -697,11 +697,6 @@ class GameManager:
                         self.ui.close_dialogue()
             return
 
-        # Hotbar slots 1–9
-        if event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4,
-                         pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9):
-            self._activate_hotbar_slot(event.key - pygame.K_1)
-            return
         if event.key == pygame.K_e:
             self._interact()
         elif event.key == pygame.K_f:
@@ -738,22 +733,6 @@ class GameManager:
             else:
                 self.ui.show_message("No Save Found.")
 
-    def _activate_hotbar_slot(self, index):
-        """Activate hotbar slot at 0-based index."""
-        slots = self.ui.hotbar_slots
-        if index >= len(slots) or slots[index] is None:
-            return
-        action = slots[index]
-        if action == "toggle_combat":
-            new_mode = "ranged" if self.player.combat_mode == "melee" else "melee"
-            self.player.set_combat_mode(new_mode)
-            self.ui.show_message(f"Combat mode: {new_mode.capitalize()}")
-        elif action in ("accurate", "aggressive", "defensive", "rapid", "longrange"):
-            self.player.set_combat_style(action)
-            self.ui.show_message(f"Style: {action.capitalize()}")
-        else:
-            success, msg = self.player.use_item(action)
-            self.ui.show_message(msg)
 
     def _interact(self):
         # Check for bank

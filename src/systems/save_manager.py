@@ -70,8 +70,6 @@ class SaveManager:
                 } for s in gm.stations
             ]
         
-        if gm and hasattr(gm, 'ui'):
-            data["hotbar"] = gm.ui.hotbar_slots
 
         with open(SAVE_FILE, "w") as f:
             json.dump(data, f)
@@ -157,9 +155,6 @@ class SaveManager:
                         s.items_to_process = s_data.get("items_to_process", 0)
                         s.processed_items = s_data.get("processed_items", 0)
 
-            if "hotbar" in data and hasattr(gm, 'ui'):
-                loaded = data["hotbar"]
-                gm.ui.hotbar_slots = (loaded + [None] * 9)[:9]
 
         return True
 
