@@ -66,12 +66,29 @@ class GameManager:
         self.last_tick = pygame.time.get_ticks()
         self._last_frame_ms = 0.0
         try:
-            # We assume it converts safely after display init
-            self.grass_bg = pygame.image.load(os.path.join("assets", "sprites", "world", "grass.png")).convert()
-            # Scale slightly so pixel art looks bigger if needed, or leave it 1:1
-            # We'll leave it 1:1
+            self.tex_grass = pygame.image.load(os.path.join("assets", "sprites", "world", "grass.png")).convert()
+            self.tex_dirt = pygame.image.load(os.path.join("assets", "sprites", "world", "dirt.png")).convert()
+            self.tex_water = pygame.image.load(os.path.join("assets", "sprites", "world", "water.png")).convert()
+            self.tex_dirt = pygame.transform.scale(self.tex_dirt, (TILE_SIZE, TILE_SIZE))
+            self.tex_water = pygame.transform.scale(self.tex_water, (TILE_SIZE, TILE_SIZE))
         except:
-            self.grass_bg = None
+            self.tex_grass = None
+            self.tex_dirt = None
+            self.tex_water = None
+            
+        self.world_w = MAP_WIDTH // TILE_SIZE
+        self.world_h = MAP_HEIGHT // TILE_SIZE
+        self.world_map = [[0 for _ in range(self.world_h)] for _ in range(self.world_w)]
+        import math
+        for x in range(self.world_w):
+            for y in range(self.world_h):
+                dist_center = math.hypot(x - self.world_w/2, y - self.world_h/2)
+                if dist_center > min(self.world_w, self.world_h) * 0.45:
+                    self.world_map[x][y] = 2  # Water
+                else:
+                    noise = math.sin(x * 0.2) + math.cos(y * 0.2) + math.sin((x+y)*0.1)
+                    if noise > 1.2:
+                        self.world_map[x][y] = 1 # Dirt
         self.show_fps_overlay = True  # F3 toggles; issue #10 dev diagnostics
 
         self.running = True
@@ -1003,17 +1020,29 @@ class GameManager:
         self.screen.fill((0, 0, 0))
         # Draw Map background
         map_rect = self.camera.apply(pygame.Rect(0, 0, 2400, 2400))
-        if getattr(self, 'grass_bg', None):
+        if getattr(self, 'tex_grass', None):
             cam_x = self.camera.camera_rect.x
             cam_y = self.camera.camera_rect.y
-            gw, gh = self.grass_bg.get_size()
-            start_x = - (cam_x % gw)
-            start_y = - (cam_y % gh)
             
             self.screen.set_clip(map_rect)
-            for x in range(int(start_x) - gw, self.screen.get_width() + gw, gw):
-                for y in range(int(start_y) - gh, self.screen.get_height() + gh, gh):
-                    self.screen.blit(self.grass_bg, (x, y))
+            
+            # Draw visible tiles based on camera
+            start_cx = max(0, cam_x // TILE_SIZE)
+            end_cx = min(self.world_w, (cam_x + self.screen.get_width()) // TILE_SIZE + 1)
+            start_cy = max(0, cam_y // TILE_SIZE)
+            end_cy = min(self.world_h, (cam_y + self.screen.get_height()) // TILE_SIZE + 1)
+            
+            tex_map = {0: self.tex_grass, 1: getattr(self, 'tex_dirt', self.tex_grass), 2: getattr(self, 'tex_water', self.tex_grass)}
+            
+            for map_x in range(start_cx, end_cx):
+                for map_y in range(start_cy, end_cy):
+                    tile_type = self.world_map[map_x][map_y]
+                    tex = tex_map.get(tile_type, self.tex_grass)
+                    if tex:
+                        screen_x = map_x * TILE_SIZE - cam_x
+                        screen_y = map_y * TILE_SIZE - cam_y
+                        self.screen.blit(tex, (screen_x, screen_y))
+            
             self.screen.set_clip(None)
         else:
             pygame.draw.rect(self.screen, (20, 50, 20), map_rect)

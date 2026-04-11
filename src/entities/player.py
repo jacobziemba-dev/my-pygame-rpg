@@ -257,11 +257,13 @@ class Player(Entity):
                 tx -= camera.camera_rect.x
                 ty -= camera.camera_rect.y
             
-            x_color = (255, 230, 0, 180)
-            length = 6
-            # Draw an X
-            pygame.draw.line(surface, x_color, (tx - length, ty - length), (tx + length, ty + length), 3)
-            pygame.draw.line(surface, x_color, (tx - length, ty + length), (tx + length, ty - length), 3)
+            now = pygame.time.get_ticks()
+            if (now // 200) % 2 == 0:
+                x_color = (255, 230, 0, 180)
+                length = 8
+                # Draw an X
+                pygame.draw.line(surface, x_color, (tx - length, ty - length), (tx + length, ty + length), 3)
+                pygame.draw.line(surface, x_color, (tx - length, ty + length), (tx + length, ty - length), 3)
 
 
     def take_damage(self, amount):

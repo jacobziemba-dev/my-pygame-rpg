@@ -14,6 +14,15 @@ class UIManager:
         except:
             self.stone_texture = None
             
+        try:
+            self.hit_red = pygame.image.load(os.path.join("assets", "sprites", "ui", "hit_splat_red.png")).convert_alpha()
+            self.hit_red = pygame.transform.scale(self.hit_red, (24, 24))
+            self.hit_blue = pygame.image.load(os.path.join("assets", "sprites", "ui", "hit_splat_blue.png")).convert_alpha()
+            self.hit_blue = pygame.transform.scale(self.hit_blue, (24, 24))
+        except:
+            self.hit_red = None
+            self.hit_blue = None
+            
         # Load custom tab icons
         self.tab_icons = {}
         for tab in ["inventory", "skills", "combat", "crafting"]:
@@ -112,10 +121,11 @@ class UIManager:
                 if (mx-mm_radius)**2 + (my-mm_radius)**2 < mm_radius**2:
                     pygame.draw.circle(mm_surf, (0, 255, 255), (mx, my), 2)
                     
-        for item in getattr(self.gm, 'ground_items', []):
-           mx, my = world_to_mm(item.rect.centerx, item.rect.centery)
-           if (mx-mm_radius)**2 + (my-mm_radius)**2 < mm_radius**2:
-               pygame.draw.circle(mm_surf, (255, 50, 50), (mx, my), 1)
+        for item in getattr(self.gm, 'resources', []):
+            if hasattr(item, 'resource_type'):
+               mx, my = world_to_mm(item.rect.centerx, item.rect.centery)
+               if (mx-mm_radius)**2 + (my-mm_radius)**2 < mm_radius**2:
+                   pygame.draw.circle(mm_surf, (255, 50, 50), (mx, my), 1)
 
         for e in getattr(self.gm, 'enemies', []):
             mx, my = world_to_mm(e.rect.centerx, e.rect.centery)
@@ -139,9 +149,7 @@ class UIManager:
         panel_x = (surface.get_width() - panel_w) // 2
         panel_y = (surface.get_height() - panel_h) // 2
 
-        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel.fill((40, 30, 20, 230))
-        surface.blit(panel, (panel_x, panel_y))
+        self._draw_textured_rect(surface, pygame.Rect(panel_x, panel_y, panel_w, panel_h))
 
         title = self.font.render("General Store", True, (255, 215, 0))
         surface.blit(title, (panel_x + 20, panel_y + 15))
@@ -372,9 +380,26 @@ class UIManager:
             progress = age / self._splat_duration
             offset_y = int(progress * 30)  # float upward 30px over lifetime
             alpha = max(0, int(255 * (1.0 - progress)))
-            splat_surf = self.font.render(text, True, color)
+            
+            # Hit splat background
+            bg_splat = self.hit_blue if color == (100, 160, 255) else self.hit_red
+            final_y = int(sy) - 20 - offset_y
+            final_x = int(sx)
+            if bg_splat:
+                splat_img = bg_splat.copy()
+                splat_img.set_alpha(alpha)
+                surface.blit(splat_img, (final_x - splat_img.get_width()//2, final_y - splat_img.get_height()//2))
+
+            splat_surf = self.font.render(text, True, (255, 255, 255) if bg_splat else color)
             splat_surf.set_alpha(alpha)
-            surface.blit(splat_surf, (int(sx) - splat_surf.get_width() // 2, int(sy) - 20 - offset_y))
+            
+            if bg_splat:
+                # Add shadow for the number
+                shadow = self.font.render(text, True, (0, 0, 0))
+                shadow.set_alpha(alpha)
+                surface.blit(shadow, (final_x - shadow.get_width() // 2 + 1, final_y - splat_surf.get_height() // 2 + 1))
+                
+            surface.blit(splat_surf, (final_x - splat_surf.get_width() // 2, final_y - splat_surf.get_height() // 2))
 
         # Draw floating XP drops (gold, slower rise than hit splats)
         for drop in self.xp_drops:
@@ -424,6 +449,8 @@ class UIManager:
         # Keep messages for 10 seconds in chatbox
         valid_msgs = [m for m in self.messages if now - m["time"] < 10000]
         for m in valid_msgs[-6:]:
+            shadow = self.small_font.render(m["text"], True, (0, 0, 0))
+            surface.blit(shadow, (chat_x + 11, y_offset + 1))
             msg_surf = self.small_font.render(m["text"], True, m["color"])
             surface.blit(msg_surf, (chat_x + 10, y_offset))
             y_offset += 20
@@ -922,7 +949,7 @@ class UIManager:
             surface.blit(none_surf, (panel_x + 30, gear_y + 40))
 
         # Coin Box
-        coins = self.player.inventory.get_item_count("coins")
+        coins = self.player.inventory.items.get("coins", 0)
         coin_y = panel_y + panel_h - 45
         pygame.draw.line(surface, (70, 70, 70), (panel_x + 10, coin_y - 5), (panel_x + panel_w - 10, coin_y - 5), 2)
         coin_surf = self.font.render(f"Coins: {coins:,}", True, (255, 215, 0))
