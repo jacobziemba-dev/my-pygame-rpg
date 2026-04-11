@@ -31,12 +31,12 @@ class GameManager:
         # Game objects
         self.player = Player(PLAYER_START_X, PLAYER_START_Y, self)
         self.resources = []
-        self._generate_resources()
-        
         self.enemies = []
         self.npcs = []
-        self._generate_enemies()
         self.projectiles = []
+        
+        self._generate_resources()
+        self._generate_enemies()
 
         # Bank is 2×2 tiles; keep stations to the right with tile gaps so rects do not overlap.
         _hub_bank_x = PLAYER_START_X + 96
@@ -573,10 +573,8 @@ class GameManager:
                         else:
                             self.ui.show_message(result)
                 elif action is None and event.type == pygame.MOUSEBUTTONDOWN:
-                    panels_open = (self.ui.active_tab or
-                                   self.ui.active_bank or self.ui.active_shop or
-                                   getattr(self.ui, 'active_station', None))
-                    if not panels_open:
+                    # Only block clicks that land ON a UI panel/element background
+                    if not self.ui.is_pos_on_ui(event.pos):
                         if event.button == 1:
                             self.handle_world_click(event.pos, event.button)
                         elif event.button == 3:

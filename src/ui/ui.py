@@ -1326,3 +1326,70 @@ class UIManager:
             surface.blit(line_surf, (x + 20, y + 50))
             cont_surf = self.small_font.render("Click or press Space to continue", True, (150, 150, 150))
             surface.blit(cont_surf, (x + width // 2 - cont_surf.get_width() // 2, y + height - 25))
+
+    def is_pos_on_ui(self, pos):
+        """Return True if the screen position overlaps any active UI panel or element."""
+        # 1. Sidebar (active tab)
+        if self.active_tab:
+            # Simple check for the sidebar rect (includes tabs)
+            if self.sidebar_rect.collidepoint(pos):
+                return True
+            # Check the protruded tabs specifically
+            panel_w = 300
+            panel_x = SCREEN_WIDTH - panel_w
+            panel_y = SCREEN_HEIGHT - 440
+            tab_w = 40
+            tabs_list = ["combat", "skills", "quests", "inventory", "crafting"]
+            spacing = (panel_w - (len(tabs_list) * tab_w)) // (len(tabs_list) + 1)
+            for i in range(len(tabs_list)):
+                tx = panel_x + spacing + i * (tab_w + spacing)
+                ty = panel_y - 34 + 2
+                if pygame.Rect(tx, ty, tab_w, 34).collidepoint(pos):
+                    return True
+
+        # 2. Bank / Shop panels
+        if self.active_bank or self.active_shop:
+            panel_w, panel_h = 600, 450
+            panel_x = (SCREEN_WIDTH - panel_w) // 2
+            panel_y = (SCREEN_HEIGHT - panel_h) // 2
+            if pygame.Rect(panel_x, panel_y, panel_w, panel_h).collidepoint(pos):
+                return True
+
+        # 3. Station menu
+        if getattr(self, 'active_station', None):
+            panel_w, panel_h = 400, 300
+            panel_x = (SCREEN_WIDTH - panel_w) // 2
+            panel_y = (SCREEN_HEIGHT - panel_h) // 2
+            if pygame.Rect(panel_x, panel_y, panel_w, panel_h).collidepoint(pos):
+                return True
+
+        # 4. Dialogue
+        if getattr(self, 'active_dialogue', None):
+            width, height = 400, 160
+            x, y = (SCREEN_WIDTH - width) // 2, SCREEN_HEIGHT - height - 100
+            if pygame.Rect(x, y, width, height).collidepoint(pos):
+                return True
+
+        # 5. Chatbox
+        if pygame.Rect(10, SCREEN_HEIGHT - 150, 450, 140).collidepoint(pos):
+            return True
+
+        # 6. Minimap
+        mm_radius = 80
+        mm_x = SCREEN_WIDTH - mm_radius - 20
+        mm_y = 20 + mm_radius
+        dist_sq = (pos[0] - mm_x)**2 + (pos[1] - mm_y)**2
+        if dist_sq <= (mm_radius + 4)**2:
+            return True
+
+        # 7. Hotbar
+        SLOT = 48
+        PAD  = 4
+        N    = 9
+        total_w = N * SLOT + (N - 1) * PAD
+        hx = (SCREEN_WIDTH - total_w) // 2
+        hy = SCREEN_HEIGHT - SLOT - 8
+        if pygame.Rect(hx, hy, total_w, SLOT).collidepoint(pos):
+            return True
+
+        return False

@@ -43,6 +43,7 @@ class Player(Entity):
         self.action_timer = 0
 
         self.target_destination = None
+        self.move_marker_pos = None
         self.interaction_target = None
         self.interaction_type = "default"
         self.waypoints = []
@@ -100,6 +101,11 @@ class Player(Entity):
         self.image = animation[int(self.frame_index)]
 
     def set_target_destination(self, x, y, target_entity=None, waypoints=None, action_type="default"):
+        # Snap marker to tile center for RuneScape feel
+        snap_x = (x // TILE_SIZE) * TILE_SIZE + TILE_SIZE // 2
+        snap_y = (y // TILE_SIZE) * TILE_SIZE + TILE_SIZE // 2
+        self.move_marker_pos = (snap_x, snap_y)
+
         if waypoints:
             self.waypoints = list(waypoints[1:])
             self.target_destination = waypoints[0]
@@ -150,6 +156,7 @@ class Player(Entity):
                         self.rect.centerx = tx
                         self.rect.centery = ty
                     self.target_destination = None
+                    self.move_marker_pos = None  # Reached destination, clear marker
 
                     if self.interaction_target:
                         if hasattr(self.interaction_target, 'is_active') and self.interaction_target.is_active:
@@ -266,9 +273,9 @@ class Player(Entity):
         super().draw(surface, camera)
 
         # Draw movement target indicator (RS-style yellow X)
-        if self.target_destination:
-            tx = self.target_destination[0]
-            ty = self.target_destination[1]
+        if self.move_marker_pos:
+            tx = self.move_marker_pos[0]
+            ty = self.move_marker_pos[1]
             if camera:
                 tx -= camera.camera_rect.x
                 ty -= camera.camera_rect.y
@@ -410,6 +417,7 @@ class Player(Entity):
         self.action_target = None
         self.action_timer = 0
         self.target_destination = None
+        self.move_marker_pos = None
         self.interaction_target = None
         self.waypoints = []
         
