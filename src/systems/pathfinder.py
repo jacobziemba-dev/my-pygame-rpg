@@ -5,10 +5,10 @@ COLS = MAP_WIDTH // TILE_SIZE
 ROWS = MAP_HEIGHT // TILE_SIZE
 
 
-def find_path(start_world, end_world, obstacles):
+def find_path(start_world, end_world, obstacles, tile_map=None):
     """Return a smoothed list of world-space (x, y) waypoints from start to end.
     Returns [] if no path exists or start == end."""
-    blocked = _build_grid(obstacles)
+    blocked = _build_grid(obstacles, tile_map)
 
     start = _clamp(_world_to_grid(start_world))
     end = _clamp(_world_to_grid(end_world))
@@ -38,8 +38,18 @@ def find_path(start_world, end_world, obstacles):
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _build_grid(obstacles):
+def _build_grid(obstacles, tile_map=None):
     blocked = [[False] * COLS for _ in range(ROWS)]
+    
+    # 1. Block by tile type (Water)
+    if tile_map:
+        for x in range(COLS):
+            for y in range(ROWS):
+                # Using 2 as hardcoded TILE_WATER for speed, or could import it
+                if tile_map[x][y] == 2:
+                    blocked[y][x] = True
+
+    # 2. Block by obstacle rects (Entities)
     for obs in obstacles:
         c0 = max(0, obs.left // TILE_SIZE)
         c1 = min(COLS - 1, (obs.right - 1) // TILE_SIZE)

@@ -18,6 +18,7 @@ from src.entities.projectile import Projectile
 from src.entities.shop import Shop
 from src.entities.npc import NPC
 from src.core.settings import *
+from src.core.tilemap import TileMap
 
 class GameManager:
     def __init__(self):
@@ -27,128 +28,104 @@ class GameManager:
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption(TITLE)
         self.clock = pygame.time.Clock()
+        # 1. World and Core systems
+        self.tilemap = TileMap(self)
+        self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
         
-        # Game objects
+        # 2. Player must exist before UI
         self.player = Player(PLAYER_START_X, PLAYER_START_Y, self)
+        
+        # 3. UI and Actions
+        self.ui = UIManager(self)
+        self.action_manager = ActionManager(self.ui, self.camera)
+        self.last_tick = pygame.time.get_ticks()
+        self._last_frame_ms = 0.0
+        
+        # 4. Other Game objects
         self.resources = []
         self.enemies = []
         self.npcs = []
         self.projectiles = []
+        self.crops = []
+        self.respawn_queue = []
+        self.recipe_manager = RecipeManager()
         
-        self._generate_resources()
-        self._generate_enemies()
-
-        # Bank is 2×2 tiles; keep stations to the right with tile gaps so rects do not overlap.
-        _hub_bank_x = PLAYER_START_X + 96
-        _hub_bank_y = PLAYER_START_Y - 48
+        # 4. Fixed entities (Snapped to grid)
+        _hub_bank_x = PLAYER_START_X + 64
+        _hub_bank_y = PLAYER_START_Y - 64 
         self.bank = Bank(_hub_bank_x, _hub_bank_y)
 
-        _station_x = _hub_bank_x + TILE_SIZE * 2 + TILE_SIZE  # one tile gap past bank
-        # Shop is 2×2 tiles; place to the left of bank
-        _shop_x = _hub_bank_x - TILE_SIZE * 2 - TILE_SIZE
+        _station_x = _hub_bank_x + TILE_SIZE * 3
+        _shop_x = _hub_bank_x - TILE_SIZE * 3
         _shop_y = _hub_bank_y + TILE_SIZE * 2
         self.shop = Shop(_shop_x, _shop_y)
 
         self.stations = []
         self.stations.append(Station(_station_x, _hub_bank_y, "furnace", "Furnace"))
-        self.stations.append(
-            Station(_station_x, _hub_bank_y + TILE_SIZE * 2, "workbench", "Workbench")
-        )
-        self.stations.append(
-            Station(_station_x, _hub_bank_y + TILE_SIZE * 4, "stove", "Stove")
-        )
+        self.stations.append( Station(_station_x, _hub_bank_y + TILE_SIZE * 2, "workbench", "Workbench") )
+        self.stations.append( Station(_station_x, _hub_bank_y + TILE_SIZE * 4, "stove", "Stove") )
+        self.stations.append( Station(_hub_bank_x + 320, _hub_bank_y - 192, "air_altar", "Air Altar") )
+        self.stations.append( Station(_hub_bank_x - 320, _hub_bank_y - 192, "mind_altar", "Mind Altar") )
         
-        # Altars
-        self.stations.append(Station(_hub_bank_x + 300, _hub_bank_y - 200, "air_altar", "Air Altar"))
-        self.stations.append(Station(_hub_bank_x - 300, _hub_bank_y - 200, "mind_altar", "Mind Altar"))
+        # 5. Populate world (land check enabled)
+        self._generate_resources()
+        self._generate_enemies()
 
-        self.crops = []
-        self.recipe_manager = RecipeManager()
-        self.respawn_queue = []  # [(respawn_at_ms, enemy_type, spawn_x, spawn_y)]
-
-        self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
-        self.ui = UIManager(self)
-        self.action_manager = ActionManager(self.ui, self.camera)
-        self.last_tick = pygame.time.get_ticks()
-        self._last_frame_ms = 0.0
-        try:
-            self.tex_grass = pygame.image.load(os.path.join("assets", "sprites", "world", "grass.png")).convert()
-            self.tex_dirt = pygame.image.load(os.path.join("assets", "sprites", "world", "dirt.png")).convert()
-            self.tex_water = pygame.image.load(os.path.join("assets", "sprites", "world", "water.png")).convert()
-            self.tex_dirt = pygame.transform.scale(self.tex_dirt, (TILE_SIZE, TILE_SIZE))
-            self.tex_water = pygame.transform.scale(self.tex_water, (TILE_SIZE, TILE_SIZE))
-        except:
-            self.tex_grass = None
-            self.tex_dirt = None
-            self.tex_water = None
-            
-        self.world_w = MAP_WIDTH // TILE_SIZE
-        self.world_h = MAP_HEIGHT // TILE_SIZE
-        self.world_map = [[0 for _ in range(self.world_h)] for _ in range(self.world_w)]
-        import math
-        for x in range(self.world_w):
-            for y in range(self.world_h):
-                dist_center = math.hypot(x - self.world_w/2, y - self.world_h/2)
-                if dist_center > min(self.world_w, self.world_h) * 0.45:
-                    self.world_map[x][y] = 2  # Water
-                else:
-                    noise = math.sin(x * 0.2) + math.cos(y * 0.2) + math.sin((x+y)*0.1)
-                    if noise > 1.2:
-                        self.world_map[x][y] = 1 # Dirt
-        self.show_fps_overlay = True  # F3 toggles; issue #10 dev diagnostics
-
+        # Add quest-specific NPC near spawn (grid snapped)
+        self.npcs.append(NPC(PLAYER_START_X, PLAYER_START_Y - 32, "Baker", (255, 200, 200)))
+        
+        self.show_fps_overlay = True
         self.running = True
         self.game_over = False
 
-    def _generate_resources(self):
-        for _ in range(NUM_TREES):
-            rx = random.randint(50, MAP_WIDTH - 50)
-            ry = random.randint(50, MAP_HEIGHT - 50)
-            self.resources.append(ResourceNode(rx, ry, "tree", 20, "axe", "wood", hp=5, respawn_time=15000, min_level=1))
+    def _get_random_walkable_tile(self, allow_water=False):
+        """Find a random grid-aligned position. Ensuring land-only if allow_water is False."""
+        for _ in range(100): # Limit attempts
+            tx = random.randint(1, self.tilemap.width - 2)
+            ty = random.randint(1, self.tilemap.height - 2)
             
-        for _ in range(NUM_ROCKS):
-            rx = random.randint(50, MAP_WIDTH - 50)
-            ry = random.randint(50, MAP_HEIGHT - 50)
-            self.resources.append(ResourceNode(rx, ry, "rock", 35, "pickaxe", "stone", hp=3, respawn_time=20000, min_level=1))
+            walkable = self.tilemap.world_map[tx][ty] != TILE_WATER
+            if allow_water or walkable:
+                # Return world coordinates (top-left of tile)
+                return tx * TILE_SIZE, ty * TILE_SIZE
+        return 0, 0 # Fallback
 
-        for _ in range(NUM_IRON_ROCKS):
-            rx = random.randint(50, MAP_WIDTH - 50)
-            ry = random.randint(50, MAP_HEIGHT - 50)
-            self.resources.append(ResourceNode(rx, ry, "iron_rock", 50, "pickaxe", "iron_ore", hp=3, respawn_time=30000, min_level=5))
+    def _generate_resources(self):
+        # 1. Main resources (Land only)
+        configs = [
+            (NUM_TREES, "tree", 20, "axe", "wood", 5, 15000, 1),
+            (NUM_ROCKS, "rock", 35, "pickaxe", "stone", 3, 20000, 1),
+            (NUM_IRON_ROCKS, "iron_rock", 50, "pickaxe", "iron_ore", 3, 30000, 5),
+            (NUM_BUSHES, "bush", 10, None, "fiber", 2, 10000, 1),
+            (NUM_COAL_ROCKS, "coal_rock", 50, "pickaxe", "coal", 4, 40000, 15),
+            (NUM_ESSENCE_ROCKS, "essence_rock", 40, "pickaxe", "rune_essence", 8, 10000, 1)
+        ]
+        
+        for count, ntype, diff, tool, yields, hp, respawn, min_lvl in configs:
+            for _ in range(count):
+                rx, ry = self._get_random_walkable_tile(allow_water=False)
+                self.resources.append(ResourceNode(rx, ry, ntype, diff, tool, yields, hp, respawn, min_lvl))
 
-        for _ in range(NUM_BUSHES):
-            rx = random.randint(50, MAP_WIDTH - 50)
-            ry = random.randint(50, MAP_HEIGHT - 50)
-            self.resources.append(ResourceNode(rx, ry, "bush", 10, None, "fiber", hp=2, respawn_time=10000, min_level=1))
-
-        # Add quest components near spawn
-        cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
-        self.resources.append(ResourceNode(cx + 100, cy, "wheat_field", 5, None, "wheat", hp=1, respawn_time=5000, min_level=1))
-        self.resources.append(ResourceNode(cx + 150, cy, "chicken", 5, None, "egg", hp=1, respawn_time=5000, min_level=1))
-        self.resources.append(ResourceNode(cx + 200, cy, "cow", 5, None, "milk", hp=1, respawn_time=5000, min_level=1))
-
-        self.npcs.append(NPC(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80, "Baker", (255, 200, 200)))
-
+        # 2. Fishing Spots (Water only)
         for _ in range(NUM_FISHING_SPOTS):
-            rx = random.randint(50, MAP_WIDTH - 50)
-            ry = random.randint(50, MAP_HEIGHT - 50)
-            self.resources.append(ResourceNode(rx, ry, "fishing_spot", 25, "rod", "raw_fish", hp=3, respawn_time=20000, min_level=1))
+            for _ in range(100):
+                tx = random.randint(1, self.tilemap.width - 2)
+                ty = random.randint(1, self.tilemap.height - 2)
+                if self.tilemap.world_map[tx][ty] == TILE_WATER:
+                    rx, ry = tx * TILE_SIZE, ty * TILE_SIZE
+                    self.resources.append(ResourceNode(rx, ry, "fishing_spot", 25, "rod", "raw_fish", hp=3, respawn_time=20000, min_level=1))
+                    break
 
-        for _ in range(NUM_COAL_ROCKS):
-            rx = random.randint(50, MAP_WIDTH - 50)
-            ry = random.randint(50, MAP_HEIGHT - 50)
-            self.resources.append(ResourceNode(rx, ry, "coal_rock", 50, "pickaxe", "coal", hp=4, respawn_time=40000, min_level=15))
-
-        for _ in range(NUM_ESSENCE_ROCKS):
-            rx = random.randint(50, MAP_WIDTH - 50)
-            ry = random.randint(50, MAP_HEIGHT - 50)
-            self.resources.append(ResourceNode(rx, ry, "essence_rock", 40, "pickaxe", "rune_essence", hp=8, respawn_time=10000, min_level=1))
+        # 3. Quest components near spawn (Snap manually)
+        cx, cy = PLAYER_START_X, PLAYER_START_Y
+        self.resources.append(ResourceNode(cx + 64, cy + 64, "wheat_field", 5, None, "wheat", hp=1, respawn_time=5000, min_level=1))
+        self.resources.append(ResourceNode(cx + 96, cy + 64, "chicken", 5, None, "egg", hp=1, respawn_time=5000, min_level=1))
+        self.resources.append(ResourceNode(cx + 128, cy + 64, "cow", 5, None, "milk", hp=1, respawn_time=5000, min_level=1))
 
     def _generate_enemies(self):
         for etype, count in [("goblin", NUM_GOBLINS), ("skeleton", NUM_SKELETONS), ("guard", NUM_GUARDS)]:
             for _ in range(count):
-                ex = random.randint(50, MAP_WIDTH - 50)
-                ey = random.randint(50, MAP_HEIGHT - 50)
+                ex, ey = self._get_random_walkable_tile(allow_water=False)
                 self.enemies.append(Enemy(ex, ey, etype))
 
     def _restart(self):
@@ -229,7 +206,8 @@ class GameManager:
         path = find_path(
             (self.player.rect.centerx, self.player.rect.centery),
             (world_x, world_y),
-            obstacles
+            obstacles,
+            self.tilemap.world_map
         )
         self.player.set_target_destination(world_x, world_y, target_entity=entity, waypoints=path or None, action_type=action_type)
 
@@ -583,6 +561,9 @@ class GameManager:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F3:
                     self.show_fps_overlay = not self.show_fps_overlay
+                    continue
+                if event.key == pygame.K_g:
+                    self.tilemap.toggle_grid()
                     continue
                 if event.mod & pygame.KMOD_CTRL and event.key == pygame.K_q:
                     self.running = False
@@ -948,6 +929,7 @@ class GameManager:
 
     def _get_solid_obstacles(self):
         obstacles = []
+        # Add entity-based obstacles
         for item in self.resources:
             if isinstance(item, ResourceNode) and item.is_active and item.node_type != "fishing_spot":
                 obstacles.append(item.rect)
@@ -957,6 +939,20 @@ class GameManager:
         obstacles.append(self.bank.rect)
         for npc in self.npcs:
             obstacles.append(npc.rect)
+            
+        # Add tile-based obstacles (Water)
+        # Optimized: only add tiles that are somewhat near the player/camera
+        cam_x, cam_y = self.camera.camera_rect.x, self.camera.camera_rect.y
+        start_cx = max(0, (cam_x - 100) // TILE_SIZE)
+        end_cx = min(self.tilemap.width, (cam_x + SCREEN_WIDTH + 100) // TILE_SIZE)
+        start_cy = max(0, (cam_y - 100) // TILE_SIZE)
+        end_cy = min(self.tilemap.height, (cam_y + SCREEN_HEIGHT + 100) // TILE_SIZE)
+        
+        for x in range(start_cx, end_cx):
+            for y in range(start_cy, end_cy):
+                if self.tilemap.world_map[x][y] == TILE_WATER:
+                    obstacles.append(pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+                    
         return obstacles
 
     def update(self, dt):
@@ -1136,33 +1132,7 @@ class GameManager:
     def draw(self):
         self.screen.fill((0, 0, 0))
         # Draw Map background
-        map_rect = self.camera.apply(pygame.Rect(0, 0, 2400, 2400))
-        if getattr(self, 'tex_grass', None):
-            cam_x = self.camera.camera_rect.x
-            cam_y = self.camera.camera_rect.y
-            
-            self.screen.set_clip(map_rect)
-            
-            # Draw visible tiles based on camera
-            start_cx = max(0, cam_x // TILE_SIZE)
-            end_cx = min(self.world_w, (cam_x + self.screen.get_width()) // TILE_SIZE + 1)
-            start_cy = max(0, cam_y // TILE_SIZE)
-            end_cy = min(self.world_h, (cam_y + self.screen.get_height()) // TILE_SIZE + 1)
-            
-            tex_map = {0: self.tex_grass, 1: getattr(self, 'tex_dirt', self.tex_grass), 2: getattr(self, 'tex_water', self.tex_grass)}
-            
-            for map_x in range(start_cx, end_cx):
-                for map_y in range(start_cy, end_cy):
-                    tile_type = self.world_map[map_x][map_y]
-                    tex = tex_map.get(tile_type, self.tex_grass)
-                    if tex:
-                        screen_x = map_x * TILE_SIZE - cam_x
-                        screen_y = map_y * TILE_SIZE - cam_y
-                        self.screen.blit(tex, (screen_x, screen_y))
-            
-            self.screen.set_clip(None)
-        else:
-            pygame.draw.rect(self.screen, (20, 50, 20), map_rect)
+        self.tilemap.draw(self.screen, self.camera)
         # Draw ground-level objects first (no Y-sort needed)
         for item in self.resources:
             item.draw(self.screen, self.camera)

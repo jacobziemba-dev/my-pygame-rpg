@@ -743,8 +743,18 @@ class UIManager:
                         if rect.collidepoint(event.pos):
                             self.crafting_index = i
                             return "craft_item", i
-            elif event.button == 3: # Right click — context menu handled in game_manager
-                return "right_click_inventory", -1
+            elif event.button == 3: # Right click
+                if self.active_tab == 'inventory':
+                    slot_rects = self.get_inventory_slot_rects()
+                    for i, rect in enumerate(slot_rects):
+                        if rect.collidepoint(event.pos):
+                            return "right_click_inventory", i
+                    
+                    equipped_rects = self.get_equipped_slot_rects()
+                    for i, rect in enumerate(equipped_rects):
+                        if rect.collidepoint(event.pos):
+                            return "right_click_inventory", i
+                return None, None
         return None, None
 
     def _draw_station_menu(self, surface):
@@ -1331,13 +1341,16 @@ class UIManager:
         """Return True if the screen position overlaps any active UI panel or element."""
         # 1. Sidebar (active tab)
         if self.active_tab:
-            # Simple check for the sidebar rect (includes tabs)
-            if self.sidebar_rect.collidepoint(pos):
-                return True
             # Check the protruded tabs specifically
             panel_w = 300
             panel_x = SCREEN_WIDTH - panel_w
             panel_y = SCREEN_HEIGHT - 440
+            
+            # Use the actual sidebar panel rect, not just a full vertical strip
+            visible_panel_rect = pygame.Rect(panel_x, panel_y, panel_w, 440)
+            if visible_panel_rect.collidepoint(pos):
+                return True
+
             tab_w = 40
             tabs_list = ["combat", "skills", "quests", "inventory", "crafting"]
             spacing = (panel_w - (len(tabs_list) * tab_w)) // (len(tabs_list) + 1)
@@ -1370,9 +1383,13 @@ class UIManager:
             if pygame.Rect(x, y, width, height).collidepoint(pos):
                 return True
 
-        # 5. Chatbox
-        if pygame.Rect(10, SCREEN_HEIGHT - 150, 450, 140).collidepoint(pos):
+        # 5. Chatbox (Shrink hitbox to only the message area, not a 450px block)
+        if pos[0] < 300 and pos[1] > SCREEN_HEIGHT - 60:
             return True
+        
+        # Or if the chat area has many lines (let's just use the bottom for now)
+        # if pygame.Rect(10, SCREEN_HEIGHT - 150, 450, 140).collidepoint(pos):
+        #    return True
 
         # 6. Minimap
         mm_radius = 80
