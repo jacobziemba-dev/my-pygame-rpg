@@ -28,10 +28,11 @@ def import_folder(path: str) -> list:
     return surface_list
 
 
-def load_frames_from_sheet(path: str, frame_width: int, scale_to=None) -> list:
+def load_frames_from_sheet(path: str, frame_width: int, scale_to=None, frame_height: int = None) -> list:
     """
-    Load a horizontal sprite strip: each frame is frame_width pixels wide, full image height.
-    Returns a list of surfaces; if scale_to is (w, h), each frame is scaled to that size.
+    Load frames from a horizontal strip (first row only if frame_height is set and less than sheet height).
+    Each frame is frame_width wide; frame_height defaults to full sheet height (legacy one-row tall strips).
+    If scale_to is (w, h), each frame is scaled to that size.
     """
     full_path = get_path(path)
     surface_list = []
@@ -48,9 +49,13 @@ def load_frames_from_sheet(path: str, frame_width: int, scale_to=None) -> list:
     if h <= 0 or w < frame_width:
         return surface_list
 
+    fh = frame_height if frame_height is not None else h
+    if fh <= 0 or fh > h:
+        fh = h
+
     n = w // frame_width
     for i in range(n):
-        rect = pygame.Rect(i * frame_width, 0, frame_width, h)
+        rect = pygame.Rect(i * frame_width, 0, frame_width, fh)
         frame = sheet.subsurface(rect).copy()
         if scale_to:
             frame = pygame.transform.scale(frame, scale_to)

@@ -11,6 +11,45 @@ from src.entities.shop import Shop
 from src.systems.quest_manager import QuestManager
 from src.entities.npc import NPC
 
+# 2D HD Character Knight — Spritesheets/With shadows/*.png (128×128 cells).
+# Maps logical names to files; "sit_down" is not included in this pack.
+KNIGHT_ANIMATION_SOURCES = {
+    # Basics
+    "crouch_idle": "CrouchIdle.png",
+    "die": "Die.png",
+    "idle": "Idle.png",
+    "idle2": "Idle2.png",
+    "take_damage": "TakeDamage.png",
+    # Movement
+    "crouch_run": "CrouchRun.png",
+    "walk": "Walk.png",
+    "run": "Run.png",
+    "run_backwards": "RunBackwards.png",
+    "slide_start": "SlideStart.png",
+    "slide": "Slide.png",
+    "slide_end": "SlideEnd.png",
+    "strafe_left": "StrafeLeft.png",
+    "strafe_right": "StrafeRight.png",
+    "rolling": "Rolling.png",
+    "front_flip": "FrontFlip.png",
+    # Combat
+    "special_1": "Special1.png",
+    "special_2": "Special2.png",
+    "turn_180": "180Turn.png",
+    "attack_1": "Melee.png",
+    "attack_2": "Melee2.png",
+    "attack_3": "MeleeSpin.png",
+    "attack_run": "MeleeRun.png",
+    "kick": "Kick.png",
+    "pummel": "Pummel.png",
+    "block_mid": "ShieldBlockMid.png",
+    "block_start": "ShieldBlockStart.png",
+    "cast_spell": "CastSpell.png",
+    # Others
+    "unsheath": "UnSheathSword.png",
+}
+
+
 class Player(Entity): 
     def __init__(self, x, y, game_manager):
         super().__init__(x, y, TILE_SIZE, TILE_SIZE, game_manager)
@@ -50,9 +89,10 @@ class Player(Entity):
         self.interaction_type = "default"
         self.waypoints = []
         
-        # Animations
+        # Animations — cardinal suffix _up/_down/_left/_right (side-view art: E/W flip, N/S ±90°)
+        self.facing = "_down"
         self.import_assets()
-        self.status = 'idle'
+        self.status = "idle_down"
         self.frame_index = 0
         self.animation_speed = 0.15
         self.direction = pygame.math.Vector2()
@@ -71,64 +111,86 @@ class Player(Entity):
     def _flip_frames_h(frames):
         return [pygame.transform.flip(f, True, False) for f in frames]
 
+    def _rot_frames(self, frames, angle_deg):
+        sz = (PLAYER_SPRITE_SIZE, PLAYER_SPRITE_SIZE)
+        out = []
+        for f in frames:
+            r = pygame.transform.rotate(f, angle_deg)
+            out.append(pygame.transform.smoothscale(r, sz))
+        return out
+
+    def _cardinal_from_side_view(self, frames):
+        """Strip faces right (+x). Left = mirror; up/down = ±90° then scale to sprite size."""
+        if not frames:
+            return {"_right": [], "_left": [], "_up": [], "_down": []}
+        return {
+            "_right": frames,
+            "_left": self._flip_frames_h(frames),
+            "_up": self._rot_frames(frames, 90),
+            "_down": self._rot_frames(frames, -90),
+        }
+
+    def _cardinal_suffix_from_vector(self, vx, vy):
+        if vx == 0 and vy == 0:
+            return self.facing
+        if abs(vx) > abs(vy):
+            return "_right" if vx > 0 else "_left"
+        return "_down" if vy > 0 else "_up"
+
     def import_assets(self):
-        base = "assets/sprites/new_player/with_outline"
+        base = "assets/sprites/2D HD Character Knight/Spritesheets/With shadows"
         sz = (PLAYER_SPRITE_SIZE, PLAYER_SPRITE_SIZE)
         fw = PLAYER_SHEET_FRAME_WIDTH
+        fh = PLAYER_SPRITE_SIZE
 
         def sheet(filename):
-            return load_frames_from_sheet(f"{base}/{filename}", fw, sz)
+            return load_frames_from_sheet(f"{base}/{filename}", fw, sz, frame_height=fh)
 
-        idle = sheet("IDLE.png")
-        walk = sheet("WALK.png")
-        attack = sheet("ATTACK 1.png")
-        hurt = sheet("HURT.png")
-        death = sheet("DEATH.png")
+        self.animations = {}
+        for key, filename in KNIGHT_ANIMATION_SOURCES.items():
+            self.animations[key] = sheet(filename)
 
-        self.animations = {
-            "idle": idle,
-            "walk_up": walk,
-            "walk_down": walk,
-            "walk_left": self._flip_frames_h(walk) if walk else [],
-            "walk_right": walk,
-            "attack_up": attack,
-            "attack_down": attack,
-            "attack_left": self._flip_frames_h(attack) if attack else [],
-            "attack_right": attack,
-            "hurt": hurt,
-            "death": death,
-        }
+        # Not in this pack (sit / social emote)
+        self.animations["sit_down"] = []
+
+        def add_cardinal(prefix, base_key):
+            v = self._cardinal_from_side_view(self.animations.get(base_key) or [])
+            for suf, fr in v.items():
+                self.animations[prefix + suf] = fr
+
+        add_cardinal("idle", "idle")
+        add_cardinal("walk", "walk")
+        add_cardinal("attack", "attack_1")
+        add_cardinal("hurt", "take_damage")
+        add_cardinal("death", "die")
+        add_cardinal("cast_spell", "cast_spell")
 
     def get_status(self):
         now = pygame.time.get_ticks()
-        was_hurt = self.status == "hurt"
+        was_hurt = self.status.startswith("hurt")
         was_attacking = self.status.startswith("attack_")
         if self.hp > 0 and now < self.hurt_until:
-            self.status = "hurt"
+            self.status = "hurt" + self.facing
             return
 
         prev = self.status
         if self.current_action == "attacking":
-            if "attack" not in self.status:
-                self.status = self.status.replace("walk", "attack").replace("idle", "attack")
-                if "attack" not in self.status:
-                    self.status = "attack_down"
+            suf = self.facing
+            t = self.action_target
+            if t is not None and hasattr(t, "rect"):
+                dx = t.rect.centerx - self.rect.centerx
+                dy = t.rect.centery - self.rect.centery
+                if dx != 0 or dy != 0:
+                    suf = self._cardinal_suffix_from_vector(dx, dy)
+            self.facing = suf
+            self.status = "attack" + suf
+        elif self.direction.magnitude() > 0:
+            self.facing = self._cardinal_suffix_from_vector(self.direction.x, self.direction.y)
+            self.status = "walk" + self.facing
         else:
-            if self.direction.magnitude() == 0:
-                self.status = "idle"
-            else:
-                if abs(self.direction.x) > abs(self.direction.y):
-                    if self.direction.x > 0:
-                        self.status = "walk_right"
-                    else:
-                        self.status = "walk_left"
-                else:
-                    if self.direction.y > 0:
-                        self.status = "walk_down"
-                    else:
-                        self.status = "walk_up"
+            self.status = "idle" + self.facing
 
-        if was_hurt and self.status != "hurt":
+        if was_hurt and not self.status.startswith("hurt"):
             self.frame_index = 0
         if was_attacking and not self.status.startswith("attack_"):
             self.frame_index = 0
@@ -136,13 +198,24 @@ class Player(Entity):
             self.frame_index = 0
 
     def animate(self, dt):
-        animation = self.animations.get(self.status) or self.animations.get("idle") or []
+        status = self.status
+        animation = None
+        if status.startswith("attack_") and self.combat_mode == "magic" and self.has_staff():
+            suf = status[len("attack") :]  # e.g. "_right"
+            animation = self.animations.get("cast_spell" + suf) or []
+        if not animation:
+            animation = (
+                self.animations.get(status)
+                or self.animations.get("idle" + self.facing)
+                or []
+            )
         if not animation:
             return
 
         loop = (
-            self.status not in ("hurt", "death")
-            and not self.status.startswith("attack_")
+            not status.startswith("hurt")
+            and not status.startswith("death")
+            and not status.startswith("attack_")
         )
 
         self.frame_index += self.animation_speed * dt * 60
@@ -157,14 +230,14 @@ class Player(Entity):
 
     def begin_death_animation(self):
         self.hurt_until = 0
-        self.status = "death"
+        self.status = "death" + self.facing
         self.frame_index = 0
-        death = self.animations.get("death") or []
+        death = self.animations.get(self.status) or []
         if death:
             self.image = death[0]
 
     def update_death_animation(self, dt):
-        self.status = "death"
+        self.status = "death" + self.facing
         self.animate(dt)
 
     def set_target_destination(self, x, y, target_entity=None, waypoints=None, action_type="default"):
@@ -502,5 +575,5 @@ class Player(Entity):
         self.hp = self.max_hp
         self.last_hit_time = 0
         self.hurt_until = 0
-        self.status = "idle"
+        self.status = "idle" + self.facing
         self.frame_index = 0
