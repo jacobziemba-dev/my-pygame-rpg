@@ -136,6 +136,7 @@ class GameManager:
     def _handle_player_death(self):
         """Initiate death fade animation and schedule respawn."""
         self.ui.show_message("You died!")
+        self.player.begin_death_animation()
         self.ui.is_fading = True
         self.ui.fade_start_time = pygame.time.get_ticks()
 
@@ -1127,6 +1128,7 @@ class GameManager:
                 self._handle_player_respawn()
                 self.ui.is_fading = False
             # Continue updating during fade, but pause certain actions
+            self.player.update_death_animation(dt)
             self.camera.update(self.player)
             self.ui.update()
             return

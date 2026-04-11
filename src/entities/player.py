@@ -4,6 +4,7 @@ import math
 from src.systems.inventory import Inventory
 from src.systems.skill_manager import SkillManager
 from src.core.settings import *
+from src.core.utils import load_frames_from_sheet
 from src.entities.entity import Entity
 from src.entities.bank import Bank
 from src.entities.shop import Shop
@@ -64,42 +65,107 @@ class Player(Entity):
         self.inventory.add_item("wheat_seeds", 5)
 
         self.image = None
+        self.hurt_until = 0
+
+    @staticmethod
+    def _flip_frames_h(frames):
+        return [pygame.transform.flip(f, True, False) for f in frames]
 
     def import_assets(self):
+        base = "assets/sprites/new_player/with_outline"
+        sz = (TILE_SIZE, TILE_SIZE)
+        fw = PLAYER_SHEET_FRAME_WIDTH
+
+        def sheet(filename):
+            return load_frames_from_sheet(f"{base}/{filename}", fw, sz)
+
+        idle = sheet("IDLE.png")
+        walk = sheet("WALK.png")
+        attack = sheet("ATTACK 1.png")
+        hurt = sheet("HURT.png")
+        death = sheet("DEATH.png")
+
         self.animations = {
-            'idle': [], 'walk_up': [], 'walk_down': [], 'walk_left': [], 'walk_right': [],
-            'attack_up': [], 'attack_down': [], 'attack_left': [], 'attack_right': []
+            "idle": idle,
+            "walk_up": walk,
+            "walk_down": walk,
+            "walk_left": self._flip_frames_h(walk) if walk else [],
+            "walk_right": walk,
+            "attack_up": attack,
+            "attack_down": attack,
+            "attack_left": self._flip_frames_h(attack) if attack else [],
+            "attack_right": attack,
+            "hurt": hurt,
+            "death": death,
         }
-        self.load_animations('assets/sprites/player', (TILE_SIZE, TILE_SIZE))
 
     def get_status(self):
-        # Action status
+        now = pygame.time.get_ticks()
+        was_hurt = self.status == "hurt"
+        was_attacking = self.status.startswith("attack_")
+        if self.hp > 0 and now < self.hurt_until:
+            self.status = "hurt"
+            return
+
+        prev = self.status
         if self.current_action == "attacking":
-            if 'attack' not in self.status:
-                self.status = self.status.replace('walk', 'attack').replace('idle', 'attack')
-                if 'attack' not in self.status:
-                    self.status = 'attack_down'
+            if "attack" not in self.status:
+                self.status = self.status.replace("walk", "attack").replace("idle", "attack")
+                if "attack" not in self.status:
+                    self.status = "attack_down"
         else:
             if self.direction.magnitude() == 0:
-                self.status = 'idle'
+                self.status = "idle"
             else:
                 if abs(self.direction.x) > abs(self.direction.y):
-                    if self.direction.x > 0: self.status = 'walk_right'
-                    else: self.status = 'walk_left'
+                    if self.direction.x > 0:
+                        self.status = "walk_right"
+                    else:
+                        self.status = "walk_left"
                 else:
-                    if self.direction.y > 0: self.status = 'walk_down'
-                    else: self.status = 'walk_up'
+                    if self.direction.y > 0:
+                        self.status = "walk_down"
+                    else:
+                        self.status = "walk_up"
+
+        if was_hurt and self.status != "hurt":
+            self.frame_index = 0
+        if was_attacking and not self.status.startswith("attack_"):
+            self.frame_index = 0
+        if prev != self.status and self.status.startswith("attack_"):
+            self.frame_index = 0
 
     def animate(self, dt):
-        animation = self.animations.get(self.status, self.animations['idle'])
+        animation = self.animations.get(self.status) or self.animations.get("idle") or []
         if not animation:
             return
 
+        loop = (
+            self.status not in ("hurt", "death")
+            and not self.status.startswith("attack_")
+        )
+
         self.frame_index += self.animation_speed * dt * 60
-        if self.frame_index >= len(animation):
-            self.frame_index = 0
+        if loop:
+            if self.frame_index >= len(animation):
+                self.frame_index = 0
+        else:
+            if self.frame_index >= len(animation):
+                self.frame_index = len(animation) - 1
 
         self.image = animation[int(self.frame_index)]
+
+    def begin_death_animation(self):
+        self.hurt_until = 0
+        self.status = "death"
+        self.frame_index = 0
+        death = self.animations.get("death") or []
+        if death:
+            self.image = death[0]
+
+    def update_death_animation(self, dt):
+        self.status = "death"
+        self.animate(dt)
 
     def set_target_destination(self, x, y, target_entity=None, waypoints=None, action_type="default"):
         # Snap marker to tile center for RuneScape feel
@@ -254,11 +320,6 @@ class Player(Entity):
         self.rect.clamp_ip(pygame.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
 
     def draw(self, surface, camera=None):
-        # Flash player transparent if they were hit recently
-        current_time = pygame.time.get_ticks()
-        if current_time - self.last_hit_time < 1000 and (current_time // 100) % 2 == 0:
-            return
-
         super().draw(surface, camera)
 
         # Draw movement target indicator (RS-style yellow X)
@@ -291,6 +352,11 @@ class Player(Entity):
             if self.hp < 0:
                 self.hp = 0
             self.last_hit_time = current_time
+            if self.hp <= 0:
+                self.hurt_until = 0
+            else:
+                self.hurt_until = current_time + 450
+                self.frame_index = 0
             return True
         return False
 
@@ -433,3 +499,6 @@ class Player(Entity):
         # Restore HP and reset defensive state
         self.hp = self.max_hp
         self.last_hit_time = 0
+        self.hurt_until = 0
+        self.status = "idle"
+        self.frame_index = 0

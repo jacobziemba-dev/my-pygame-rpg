@@ -25,6 +25,8 @@ PLAYER_START_Y = 1216
 PLAYER_SPEED = 4
 ARRIVE_THRESHOLD = 6  # arrival dead zone; slightly > PLAYER_SPEED to prevent oscillation
 PLAYER_MAX_HP = 100
+# Horizontal strip frames in assets/sprites/new_player/with_outline/*.png (native frame width before scaling to TILE_SIZE)
+PLAYER_SHEET_FRAME_WIDTH = 96
 
 # Entity colors
 COLOR_PLAYER = (0, 128, 255)
