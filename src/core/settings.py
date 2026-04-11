@@ -23,6 +23,7 @@ GRID_COLOR = (255, 255, 255, 30)  # Subtle white grid
 PLAYER_START_X = 1216
 PLAYER_START_Y = 1216
 PLAYER_SPEED = 4
+ARRIVE_THRESHOLD = 6  # arrival dead zone; slightly > PLAYER_SPEED to prevent oscillation
 PLAYER_MAX_HP = 100
 
 # Entity colors

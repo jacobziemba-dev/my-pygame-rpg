@@ -146,13 +146,18 @@ class GameManager:
         # Reset player state (clears action/combat, restores full HP)
         self.player.reset_after_death()
         
-        # Show respawn message
-        self.ui.show_message("You have been recovered!")
         self.respawn_queue = []
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
-        self.ui = UIManager(self.player)
+        # Reset transient UI state without rebuilding the whole UIManager
+        self.ui.active_bank = False
+        self.ui.active_shop = False
+        self.ui.active_station = None
+        self.ui.active_dialogue = None
+        self.ui.is_fading = False
+        self.ui.context_menu = None
         self.action_manager = ActionManager(self.ui, self.camera)
         self.last_tick = pygame.time.get_ticks()
+        self.ui.show_message("You have been recovered!")
 
     def _award_xp(self, skill_name, amount, world_x=None, world_y=None):
         """Award XP and spawn a floating XP drop near the provided world position."""
@@ -211,6 +216,26 @@ class GameManager:
             self.tilemap.world_map
         )
         self.player.set_target_destination(world_x, world_y, target_entity=entity, waypoints=path or None, action_type=action_type)
+
+    def _update_chase_destination(self, enemy):
+        """Pathfind toward enemy without clearing current_action/action_target.
+
+        set_target_destination() must NOT be used here because it nullifies
+        current_action and action_target, which would break the auto-attack loop.
+        """
+        obstacles = self._get_solid_obstacles(full_map=True)
+        path = find_path(
+            (self.player.rect.centerx, self.player.rect.centery),
+            (enemy.rect.centerx, enemy.rect.centery),
+            obstacles,
+            self.tilemap.world_map
+        )
+        if path:
+            self.player.waypoints = list(path[1:])
+            self.player.target_destination = path[0]
+        else:
+            self.player.waypoints = []
+            self.player.target_destination = (enemy.rect.centerx, enemy.rect.centery)
 
     def handle_world_click(self, pos, button):
         # Convert screen pos to world pos
@@ -706,8 +731,6 @@ class GameManager:
             self._interact()
         elif event.key == pygame.K_f:
             self._farm()
-        elif event.key == pygame.K_SPACE:
-            self._attack()
         elif event.key == pygame.K_c:
             self.ui.toggle_tab("crafting")
             self.ui.crafting_index = 0
@@ -880,37 +903,6 @@ class GameManager:
         base_msg = f"{enemy.name} defeated! (+{combat_xp} XP)"
         self.ui.show_message(base_msg + (" " + " ".join(notes) if notes else ""))
 
-    def _attack(self):
-        """Space: instant-hit nearest enemy if adjacent, else pathfind to it."""
-        if self.player.hp <= 0: return
-        if not self.enemies:
-            self.ui.show_message("No enemies nearby.")
-            return
-        import math
-        nearest = min(self.enemies,
-                      key=lambda e: math.hypot(e.rect.centerx - self.player.rect.centerx,
-                                               e.rect.centery - self.player.rect.centery))
-        attack_rect = self.player.rect.inflate(80, 80)
-        if attack_rect.colliderect(nearest.rect):
-            base_dmg = self.player.get_attack()
-            dmg, is_hit = self._roll_hit(base_dmg, nearest)
-            self.ui.add_hit_splat(dmg, nearest.rect.centerx, nearest.rect.top, self.camera, is_miss=not is_hit)
-            if is_hit:
-                nearest.hp -= dmg
-                primary, secondary = self.player.get_xp_skill_for_hit()
-                self._award_xp(primary, 5, self.player.rect.centerx, self.player.rect.top)
-                if secondary:
-                    self._award_xp(secondary, 2, self.player.rect.centerx, self.player.rect.top)
-                self.ui.show_message(f"Hit {nearest.name} for {dmg}!")
-                if nearest.hp <= 0:
-                    self._kill_enemy(nearest)
-                    return
-            else:
-                self.ui.show_message(f"Missed {nearest.name}!")
-        # Set up auto-attack loop toward nearest enemy
-        self.player.set_target_destination(
-            nearest.rect.centerx, nearest.rect.centery, target_entity=nearest)
-
     def _find_safe_drop_pos(self, start_x, start_y, w, h):
         """Find a nearby position for an item using a deterministic spiral search."""
         # Include everything for maximum safety: inactive nodes and other items
@@ -1005,7 +997,7 @@ class GameManager:
         if self.player.hp > 0:
             obstacles = self._get_solid_obstacles()
             if self.ui.active_tab != "crafting":
-                self.player.update(dt, obstacles)
+                self.player.update(dt)
             
             for crop in self.crops:
                 crop.update()
@@ -1043,8 +1035,7 @@ class GameManager:
                                 self.player.action_target = None
                         else:
                             # Move closer — keep attack state so next tick re-evaluates
-                            self.player.target_destination = (enemy.rect.centerx, enemy.rect.centery)
-                            self.player.waypoints = []
+                            self._update_chase_destination(enemy)
                     elif self.player.combat_mode == "magic" and self.player.has_staff():
                         import math
                         dx = enemy.rect.centerx - self.player.rect.centerx
@@ -1083,8 +1074,7 @@ class GameManager:
                                     self.player.current_action = None
                                     self.player.action_target = None
                         else:
-                            self.player.target_destination = (enemy.rect.centerx, enemy.rect.centery)
-                            self.player.waypoints = []
+                            self._update_chase_destination(enemy)
                     else:
                         # Melee branch
                         attack_rect = self.player.rect.inflate(80, 80)
@@ -1105,8 +1095,7 @@ class GameManager:
                                 self.ui.show_message(f"Missed {enemy.name}!")
                         else:
                             # Enemy moved — keep attack state and chase them
-                            self.player.target_destination = (enemy.rect.centerx, enemy.rect.centery)
-                            self.player.waypoints = []
+                            self._update_chase_destination(enemy)
 
             # Respawn queue — bring enemies back at their spawn locations
             now_ms = pygame.time.get_ticks()
@@ -1128,9 +1117,6 @@ class GameManager:
                         actual = max(1, dmg - self.player.get_defense())
                         self._award_xp("defense", 3, self.player.rect.centerx, self.player.rect.top)
                         self.ui.show_message(f"{enemy.name} hits you for {actual}!")
-                        # Auto-retaliate when idle
-                        if self.player.current_action is None and self.player.hp > 0:
-                            self._pathfind_to_entity(enemy.rect.centerx, enemy.rect.centery, enemy)
 
             for proj in self.projectiles[:]:
                 proj.update(dt)

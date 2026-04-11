@@ -4,7 +4,7 @@ import math
 from src.systems.inventory import Inventory
 from src.systems.skill_manager import SkillManager
 from src.core.settings import *
-from src.entities.entity import Entity, resolve_collision_x, resolve_collision_y
+from src.entities.entity import Entity
 from src.entities.bank import Bank
 from src.entities.shop import Shop
 from src.systems.quest_manager import QuestManager
@@ -119,9 +119,7 @@ class Player(Entity):
         self.current_action = None
         self.action_target = None
 
-    def update(self, dt, obstacles=None):
-        if obstacles is None:
-            obstacles = []
+    def update(self, dt):
         moved = False
         self.direction.xy = (0, 0)
         if self.target_destination:
@@ -131,15 +129,13 @@ class Player(Entity):
             dist = math.hypot(dx, dy)
 
             # Move towards target if not close enough
-            if dist > self.speed:
+            if dist > ARRIVE_THRESHOLD:
                 dx_norm = dx / dist
                 dy_norm = dy / dist
                 self.direction.x = dx_norm
                 self.direction.y = dy_norm
                 self.rect.x += dx_norm * self.speed * dt * 60
-                resolve_collision_x(self.rect, obstacles)
                 self.rect.y += dy_norm * self.speed * dt * 60
-                resolve_collision_y(self.rect, obstacles)
                 moved = True
             else:
                 if self.waypoints:
@@ -147,16 +143,8 @@ class Player(Entity):
                     self.target_destination = self.waypoints.pop(0)
                 else:
                     # Final destination reached — snap and trigger interaction
-                    if not self.interaction_target:
-                        test = self.rect.copy()
-                        test.centerx = tx
-                        test.centery = ty
-                        if not any(test.colliderect(obs) for obs in obstacles):
-                            self.rect.centerx = tx
-                            self.rect.centery = ty
-                    else:
-                        self.rect.centerx = tx
-                        self.rect.centery = ty
+                    self.rect.centerx = tx
+                    self.rect.centery = ty
                     self.target_destination = None
                     self.move_marker_pos = None  # Reached destination, clear marker
 
@@ -239,6 +227,8 @@ class Player(Entity):
                                             self.game_manager.ui.show_message("Opened Chest! Huge Loot gained.")
                                         else:
                                             self.game_manager.ui.show_message("Your inventory is full.")
+                                     if wood_ok or stone_ok:
+                                         self.game_manager.resources.remove(item)
                                  else:
                                      if self.inventory.add_item(item.resource_type, 1):
                                          if hasattr(self.game_manager, 'ui'):
@@ -248,9 +238,6 @@ class Player(Entity):
                                          if hasattr(self.game_manager, 'ui'):
                                             self.game_manager.ui.show_message("Your inventory is full.")
                                          # Keep item on the ground when pickup fails.
-                                         
-                                 if item.resource_type == "chest" and (wood_ok or stone_ok):
-                                     self.game_manager.resources.remove(item)
 
                         self.interaction_target = None
                     
@@ -329,6 +316,9 @@ class Player(Entity):
 
     def has_bow(self):
         return "shortbow" in self.equipped_items
+
+    def has_staff(self):
+        return any("staff" in item for item in self.equipped_items)
 
     def set_combat_mode(self, mode):
         if mode == "melee":
