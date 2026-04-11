@@ -73,7 +73,7 @@ class Player(Entity):
 
     def import_assets(self):
         base = "assets/sprites/new_player/with_outline"
-        sz = (TILE_SIZE, TILE_SIZE)
+        sz = (PLAYER_SPRITE_SIZE, PLAYER_SPRITE_SIZE)
         fw = PLAYER_SHEET_FRAME_WIDTH
 
         def sheet(filename):
@@ -320,7 +320,9 @@ class Player(Entity):
         self.rect.clamp_ip(pygame.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT))
 
     def draw(self, surface, camera=None):
-        super().draw(surface, camera)
+        draw_rect = camera.apply(self.rect) if camera else self.rect
+        if self.image:
+            surface.blit(self.image, self.image.get_rect(center=draw_rect.center))
 
         # Draw movement target indicator (RS-style yellow X)
         if self.move_marker_pos:

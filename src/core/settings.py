@@ -25,7 +25,10 @@ PLAYER_START_Y = 1216
 PLAYER_SPEED = 4
 ARRIVE_THRESHOLD = 6  # arrival dead zone; slightly > PLAYER_SPEED to prevent oscillation
 PLAYER_MAX_HP = 100
-# Horizontal strip frames in assets/sprites/new_player/with_outline/*.png (native frame width before scaling to TILE_SIZE)
+# Drawn size for player animation frames (sprite strips are scaled to this square). Collision/pathfinding still use TILE_SIZE.
+# Set to 32 for a tile-sized sprite; 48 matches on-screen scale better next to 64px hub/building sprites.
+PLAYER_SPRITE_SIZE = 48
+# Horizontal strip frames in assets/sprites/new_player/with_outline/*.png (native frame width before scaling to PLAYER_SPRITE_SIZE)
 PLAYER_SHEET_FRAME_WIDTH = 96
 
 # Entity colors
