@@ -8,6 +8,7 @@ from src.entities.bank import Bank
 from src.entities.station import Station
 from src.ui.ui import UIManager
 from src.entities.enemy import Enemy
+from src.entities.entity import resolve_collision_x, resolve_collision_y
 from src.entities.crop import Crop
 from src.core.camera import Camera
 from src.systems.save_manager import SaveManager
@@ -998,7 +999,24 @@ class GameManager:
             obstacles = self._get_solid_obstacles()
             if self.ui.active_tab != "crafting":
                 self.player.update(dt)
-            
+                # Resolve player collision against enemies (player can't walk through them)
+                enemy_rects = [e.rect for e in self.enemies]
+                if enemy_rects:
+                    resolve_collision_x(self.player.rect, enemy_rects)
+                    resolve_collision_y(self.player.rect, enemy_rects)
+                # OSRS: trigger combat as soon as player is adjacent to target enemy
+                # (don't require reaching the exact center tile of the enemy)
+                if (self.player.interaction_target and
+                        hasattr(self.player.interaction_target, 'hp') and
+                        self.player.interaction_target in self.enemies):
+                    target_enemy = self.player.interaction_target
+                    if self.player.rect.inflate(80, 80).colliderect(target_enemy.rect):
+                        self.player.current_action = "attacking"
+                        self.player.action_target = target_enemy
+                        self.player.interaction_target = None
+                        self.player.target_destination = None
+                        self.player.waypoints = []
+
             for crop in self.crops:
                 crop.update()
                 
@@ -1111,12 +1129,16 @@ class GameManager:
 
             for enemy in self.enemies[:]:
                 enemy.update(self.player, dt, obstacles + [self.player.rect])
-                if enemy.rect.inflate(4, 4).colliderect(self.player.rect):
+                if enemy.rect.inflate(16, 16).colliderect(self.player.rect):
                     dmg = random.randint(1, enemy.max_hit)
                     if self.player.take_damage(dmg):
                         actual = max(1, dmg - self.player.get_defense())
                         self._award_xp("defense", 3, self.player.rect.centerx, self.player.rect.top)
                         self.ui.show_message(f"{enemy.name} hits you for {actual}!")
+                        # Auto-retaliate: fight back automatically when idle (OSRS default)
+                        if self.player.current_action is None:
+                            self.player.current_action = "attacking"
+                            self.player.action_target = enemy
 
             for proj in self.projectiles[:]:
                 proj.update(dt)

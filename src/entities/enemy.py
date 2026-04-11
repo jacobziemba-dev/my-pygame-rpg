@@ -42,7 +42,9 @@ class Enemy(Entity):
         dy = player.rect.centery - self.rect.centery
         dist = math.hypot(dx, dy)
 
-        if 0 < dist < self.aggro_range:
+        # OSRS-style: enemy chases player but stops when adjacent (won't walk into player)
+        adjacent_dist = TILE_SIZE + 4  # stop one tile away from player center
+        if 0 < dist < self.aggro_range and dist > adjacent_dist:
             dx_norm = dx / dist
             dy_norm = dy / dist
             self.rect.x += dx_norm * self.speed * dt * 60
