@@ -16,6 +16,7 @@ from src.systems.pathfinder import find_path
 from src.systems.recipe_manager import RecipeManager
 from src.entities.projectile import Projectile
 from src.entities.shop import Shop
+from src.entities.npc import NPC
 from src.core.settings import *
 
 class GameManager:
@@ -33,6 +34,7 @@ class GameManager:
         self._generate_resources()
         
         self.enemies = []
+        self.npcs = []
         self._generate_enemies()
         self.projectiles = []
 
@@ -119,6 +121,14 @@ class GameManager:
             ry = random.randint(50, MAP_HEIGHT - 50)
             self.resources.append(ResourceNode(rx, ry, "bush", 10, None, "fiber", hp=2, respawn_time=10000, min_level=1))
 
+        # Add quest components near spawn
+        cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        self.resources.append(ResourceNode(cx + 100, cy, "wheat_field", 5, None, "wheat", hp=1, respawn_time=5000, min_level=1))
+        self.resources.append(ResourceNode(cx + 150, cy, "chicken", 5, None, "egg", hp=1, respawn_time=5000, min_level=1))
+        self.resources.append(ResourceNode(cx + 200, cy, "cow", 5, None, "milk", hp=1, respawn_time=5000, min_level=1))
+
+        self.npcs.append(NPC(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80, "Baker", (255, 200, 200)))
+
         for _ in range(NUM_FISHING_SPOTS):
             rx = random.randint(50, MAP_WIDTH - 50)
             ry = random.randint(50, MAP_HEIGHT - 50)
@@ -203,6 +213,9 @@ class GameManager:
             return self.shop
         if click_rect.colliderect(self.bank.rect):
             return self.bank
+        for npc in self.npcs:
+            if click_rect.colliderect(npc.rect):
+                return npc
         for station in self.stations:
             if click_rect.colliderect(station.rect):
                 return station
@@ -240,6 +253,7 @@ class GameManager:
         from src.entities.enemy import Enemy
         from src.entities.bank import Bank
         from src.entities.station import Station
+        from src.entities.npc import NPC
 
         if entity is None:
             options.append({
@@ -297,6 +311,16 @@ class GameManager:
             options.append({
                 "label": "Use Bank",
                 "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e)
+            })
+        elif isinstance(entity, NPC):
+            _e = entity
+            options.append({
+                "label": f"Talk-to {entity.name}",
+                "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e, action_type="talk")
+            })
+            options.append({
+                "label": f"Examine {entity.name}",
+                "action": lambda e=_e: self.ui.show_message(f"It's {e.name}.")
             })
             options.append({
                 "label": "Examine Bank",
@@ -431,7 +455,50 @@ class GameManager:
                     continue
 
                 action, index = self.ui.handle_mouse_event(event)
-                if action == "use_item":
+                if action == "next_dialogue":
+                    if self.ui.active_dialogue.get("type", "linear") == "linear":
+                        self.ui.active_dialogue["line_index"] += 1
+                        if self.ui.active_dialogue["line_index"] >= len(self.ui.active_dialogue.get("lines", [])):
+                            self.ui.close_dialogue()
+                elif action == "dialogue_response":
+                    node_id, response_idx = index
+                    node = self.ui.dialogue_manager.get_node(node_id)
+                    response = node["responses"][response_idx]
+                    
+                    condition = response.get("condition")
+                    can_proceed = True
+                    if condition:
+                        if condition["type"] == "has_items":
+                            for req_item, req_amt in condition.get("items", {}).items():
+                                if self.player.inventory.items.get(req_item, 0) < req_amt:
+                                    can_proceed = False
+                                    break
+                    
+                    if not can_proceed:
+                        self.ui.show_message("You don't meet the requirements.")
+                    else:
+                        r_action = response.get("action")
+                        if r_action:
+                            if r_action == "start_quest_bakers_assistant":
+                                self.player.quest_manager.start_quest("bakers_assistant")
+                            elif r_action == "complete_quest_bakers_assistant":
+                                self.player.inventory.remove_item("egg", 1)
+                                self.player.inventory.remove_item("milk", 1)
+                                self.player.inventory.remove_item("wheat", 1)
+                                self.player.quest_manager.complete_quest("bakers_assistant")
+                                self._award_xp("cooking", 100, self.player.rect.centerx, self.player.rect.top)
+                                self.ui.show_message("Quest Complete: The Baker's Assistant!")
+                                baker_npc = next((n for n in self.npcs if n.name == "Baker"), None)
+                                if baker_npc:
+                                    from src.entities.station import Station
+                                    self.stations.append(Station(baker_npc.rect.right + 20, baker_npc.rect.top, "high_tier_stove", "Iron Stove"))
+                        
+                        next_node = response.get("next")
+                        if next_node == "END":
+                            self.ui.close_dialogue()
+                        else:
+                            self.ui.show_dialogue_node(next_node)
+                elif action == "use_item":
                     active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
                     if 0 <= index < len(active_items):
                         item_name, _ = active_items[index]
@@ -645,9 +712,10 @@ class GameManager:
     def _handle_main_input(self, event):
         if getattr(self.ui, 'active_dialogue', None):
             if event.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_ESCAPE):
-                self.ui.active_dialogue["line_index"] += 1
-                if self.ui.active_dialogue["line_index"] >= len(self.ui.active_dialogue["lines"]):
-                    self.ui.close_dialogue()
+                if self.ui.active_dialogue.get("type", "linear") == "linear":
+                    self.ui.active_dialogue["line_index"] += 1
+                    if self.ui.active_dialogue["line_index"] >= len(self.ui.active_dialogue.get("lines", [])):
+                        self.ui.close_dialogue()
             return
 
         # Hotbar slots 1–9
@@ -889,6 +957,8 @@ class GameManager:
             obstacles.append(station.rect)
         obstacles.append(self.shop.rect)
         obstacles.append(self.bank.rect)
+        for npc in self.npcs:
+            obstacles.append(npc.rect)
         return obstacles
 
     def update(self, dt):
@@ -1105,7 +1175,7 @@ class GameManager:
 
         # Y-sort entities so lower ones draw on top (correct depth)
         y_sorted = sorted(
-              self.stations + self.enemies + [self.bank, self.shop, self.player],
+              self.stations + self.enemies + self.npcs + [self.bank, self.shop, self.player],
             key=lambda e: e.rect.bottom
         )
         for entity in y_sorted:

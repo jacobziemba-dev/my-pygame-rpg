@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **Development Constraint**: This game is strictly an OFFLINE, single-player RPG. Under no circumstances will online, multiplayer, or networking mechanics be introduced. All features must simulate the rich MMO experience natively without relying on external servers.
 
-### Phase 1: Magic Combat & Runecrafting
+### Phase 1: Magic Combat & Runecrafting (Completed)
 - **The Runecrafting Loop**:
   - Add `rune_essence_rock` entities scaling off the Mining skill. Mining yields `rune_essence`.
   - Add Altar objects (e.g., Air Altar). Players interact with Altars to convert essence into specific elemental runes, awarding Runecrafting XP.
@@ -30,7 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Add magical weapons (staves/wands) that, when equipped, route attack logic to use the Magic skill.
   - Update the 600ms combat loop in `game_manager.py`: When attacking via magic, verify the inventory has the required runes for the active spell, deduct the runes, and calculate damage against the enemy's magical defense using quadratic XP scaling.
 
-### Phase 2: The Single-Player Quest Engine
+### Phase 2: The Single-Player Quest Engine (Completed)
 - **Stateful Dialogue Trees**:
   - Upgrade from linear flavor text to a robust dialogue payload system capable of multiple-choice branching paths, player responses, item requirement checks, and quest state flags.
 - **Quest Journal UI**:
@@ -38,6 +38,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **"The Baker's Assistant" Starter Quest**:
   - A multi-step introductory quest requiring the player to speak to a Baker NPC, agree to the quest, gather three specific processed materials (e.g., Wheat, Egg, Milk), and return them.
   - On completion, award the player highly visible Quest Points, a lump sum of Cooking XP, and access to a previously locked high-tier Stove.
+
+## 🗺️ Milestone 5: The Grand Exchange Simulator & Agility Training
+
+> **Development Constraint**: This game remains strictly OFFLINE. The Grand Exchange will be simulated via an offline, moving-average economy model to mimic player trading realistically.
+
+### Phase 1: Offline Grand Exchange
+- **Dynamic Pricing Engine**: Build an offline market simulator that adjusts buy/sell prices of items dynamically based on the player's transaction volume and background RNG market trends.
+- **GE Trading Post UI**: A new massive center-screen UI showing price graphs, historical trends, and multi-slot buy/sell offer boxes.
+- **Clerk NPCs**: Add GE Clerks near the main hub with specialized dialogue branching.
+
+### Phase 2: Agility Skill & Shortcuts
+- **Obstacle Nodes**: Create an `Obstacle` entity (logs, nets, pipes) that requires a specific Agility level to cross and provides significant pathfinding shortcuts.
+- **Animation States**: Add `climb`, `crawl`, and `jump` movement states to the player's traversal logic.
+- **Gnome Stronghold Course**: A dedicated, linked agility arena to grind lap completions for scaling XP drops and cosmetic Graceful-esque rewards.
+
+---
 
 ## Vision: A RuneScape-Inspired RPG
 

@@ -1,6 +1,7 @@
 import pygame
 import os
 from src.systems.recipe_manager import RecipeManager
+from src.systems.dialogue_manager import DialogueManager
 from src.core.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 
 class UIManager:
@@ -9,6 +10,7 @@ class UIManager:
         self.player = game_manager.player
         self.shop = getattr(game_manager, 'shop', None)
         self.recipe_manager = RecipeManager()
+        self.dialogue_manager = DialogueManager()
         try:
             self.stone_texture = pygame.image.load(os.path.join("assets", "sprites", "ui", "stone_texture.png")).convert()
         except:
@@ -465,7 +467,7 @@ class UIManager:
         self._draw_textured_rect(surface, pygame.Rect(panel_x, panel_y, panel_w, panel_h))
 
         # Tabs (OSRS protruded style)
-        tabs = [("combat", "Cbt"), ("skills", "Skl"), ("inventory", "Inv"), ("crafting", "Crf")]
+        tabs = [("combat", "Cbt"), ("skills", "Skl"), ("quests", "Qst"), ("inventory", "Inv"), ("crafting", "Crf")]
         tab_w = 40
         tab_h = 34
         spacing = (panel_w - (len(tabs) * tab_w)) // (len(tabs) + 1)
@@ -503,6 +505,8 @@ class UIManager:
             self._draw_inventory_panel(surface, crect)
         elif self.active_tab == "skills":
             self._draw_skills_panel(surface, crect)
+        elif self.active_tab == "quests":
+            self._draw_quests_tab(surface, crect)
         elif self.active_tab == "crafting":
             self._draw_crafting_menu(surface, crect)
         elif self.active_tab == "combat":
@@ -634,8 +638,9 @@ class UIManager:
             panel_y = SCREEN_HEIGHT - panel_h
             # Check protruded tabs
             tab_w = 40
-            spacing = (panel_w - (4 * tab_w)) // 5
-            for i, tab in enumerate(["combat", "skills", "inventory", "crafting"]):
+            tabs_list = ["combat", "skills", "quests", "inventory", "crafting"]
+            spacing = (panel_w - (len(tabs_list) * tab_w)) // (len(tabs_list) + 1)
+            for i, tab in enumerate(tabs_list):
                 tx = panel_x + spacing + i * (tab_w + spacing)
                 ty = panel_y - 34 + 2
                 if tx <= event.pos[0] <= tx + tab_w and ty <= event.pos[1] <= ty + 34:
@@ -644,7 +649,18 @@ class UIManager:
 
         if getattr(self, 'active_dialogue', None):
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                return "next_dialogue", -1
+                if self.active_dialogue.get("type") == "node":
+                    node = self.dialogue_manager.get_node(self.active_dialogue["id"])
+                    if node:
+                        responses = node.get("responses", [])
+                        width, height = 400, 160
+                        x, y = (SCREEN_WIDTH - width) // 2, SCREEN_HEIGHT - height - 100
+                        for i, r in enumerate(responses):
+                            rect = pygame.Rect(x + 20, y + 75 + i * 20, width - 40, 20)
+                            if rect.collidepoint(event.pos):
+                                return "dialogue_response", (self.active_dialogue["id"], i)
+                else:
+                    return "next_dialogue", -1
             return None, None
 
         if not (self.active_tab or getattr(self, 'active_bank', False) or getattr(self, 'active_shop', False)):
@@ -834,6 +850,38 @@ class UIManager:
             surface.blit(self.font.render(f"In:  {inputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 70))
             surface.blit(self.font.render(f"Out: {outputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 48))
             surface.blit(self.font.render(f"XP:  +{r['xp']} {r_skill}", True, (160, 210, 160)), (panel_x + 10, panel_y + panel_h - 26))
+
+    def _draw_quests_tab(self, surface, crect=None):
+        if crect:
+            panel_x, panel_y, panel_w, panel_h = crect.x, crect.y, crect.w, crect.h
+        else:
+            panel_w = 320
+            panel_h = min(440, surface.get_height() - 20)
+            panel_x = surface.get_width() - panel_w - 10
+            panel_y = 10
+
+        title = self.font.render("Quest Journal", True, (255, 215, 0))
+        surface.blit(title, (panel_x + 8, panel_y + 6))
+        
+        qp = getattr(self.player.quest_manager, 'quest_points', 0)
+        qp_text = self.small_font.render(f"Quest Points: {qp}", True, (50, 150, 255))
+        surface.blit(qp_text, (panel_x + panel_w - qp_text.get_width() - 8, panel_y + 10))
+        
+        pygame.draw.line(surface, (70, 70, 70), (panel_x, panel_y + 30), (panel_x + panel_w, panel_y + 30))
+
+        y = panel_y + 40
+        for qid, qdata in self.player.quest_manager.quests_db.items():
+            status = self.player.quest_manager.get_status(qid)
+            color = (255, 50, 50) # unstarted
+            if status == "active":
+                color = (255, 255, 50)
+            elif status == "completed":
+                color = (50, 255, 50)
+            
+            qname = qdata.get("name", qid)
+            label_surf = self.small_font.render(qname, True, color)
+            surface.blit(label_surf, (panel_x + 16, y))
+            y += 24
 
     def _draw_skills_panel(self, surface, crect=None):
         if crect:
@@ -1234,27 +1282,47 @@ class UIManager:
                 surface.blit(btn_surf, (panel_x + 12, btn_y + 3))
 
     def show_dialogue(self, npc_name, lines):
-        self.active_dialogue = {"npc": npc_name, "lines": lines, "line_index": 0}
+        self.active_dialogue = {"type": "linear", "npc": npc_name, "lines": lines, "line_index": 0}
+        
+    def show_dialogue_node(self, node_id):
+        node = self.dialogue_manager.get_node(node_id)
+        if node:
+            self.active_dialogue = {"type": "node", "id": node_id}
 
     def close_dialogue(self):
         self.active_dialogue = None
 
     def _draw_dialogue(self, surface):
-        width = 400
-        height = 120
-        x = (surface.get_width() - width) // 2
-        y = surface.get_height() - height - 100
-        rect = pygame.Rect(x, y, width, height)
-        self._draw_textured_rect(surface, rect)
+        if not getattr(self, 'active_dialogue', None): return
+        width, height = 400, 160
+        x, y = (surface.get_width() - width) // 2, surface.get_height() - height - 100
+        self._draw_textured_rect(surface, pygame.Rect(x, y, width, height))
         
-        npc = self.active_dialogue["npc"]
-        line = self.active_dialogue["lines"][self.active_dialogue["line_index"]]
-        
-        npc_surf = self.font.render(npc, True, (255, 215, 0))
-        surface.blit(npc_surf, (x + width // 2 - npc_surf.get_width() // 2, y + 15))
-        
-        line_surf = self.font.render(line, True, (220, 220, 220))
-        surface.blit(line_surf, (x + 20, y + 50))
-        
-        cont_surf = self.small_font.render("Click or press Space to continue", True, (150, 150, 150))
-        surface.blit(cont_surf, (x + width // 2 - cont_surf.get_width() // 2, y + height - 25))
+        if self.active_dialogue.get("type") == "node":
+            node = self.dialogue_manager.get_node(self.active_dialogue["id"])
+            if not node: return
+            npc_name = node.get("npc", "NPC")
+            line = node.get("text", "")
+            responses = node.get("responses", [])
+            
+            npc_surf = self.font.render(npc_name, True, (255, 215, 0))
+            surface.blit(npc_surf, (x + width // 2 - npc_surf.get_width() // 2, y + 15))
+            line_surf = self.small_font.render(line, True, (220, 220, 220))
+            surface.blit(line_surf, (x + 20, y + 45))
+            
+            for i, r in enumerate(responses):
+                ms = pygame.mouse.get_pos()
+                btn_color = (200, 200, 100) if pygame.Rect(x+20, y+75+i*20, width-40, 20).collidepoint(ms) else (150, 150, 255)
+                rsurf = self.small_font.render(f"{i+1}. {r['text']}", True, btn_color)
+                surface.blit(rsurf, (x + 20, y + 75 + i * 20))
+        else:
+            npc = self.active_dialogue.get("npc", "NPC")
+            lines = self.active_dialogue.get("lines", [""])
+            idx = self.active_dialogue.get("line_index", 0)
+            line = lines[idx] if idx < len(lines) else ""
+            npc_surf = self.font.render(npc, True, (255, 215, 0))
+            surface.blit(npc_surf, (x + width // 2 - npc_surf.get_width() // 2, y + 15))
+            line_surf = self.font.render(line, True, (220, 220, 220))
+            surface.blit(line_surf, (x + 20, y + 50))
+            cont_surf = self.small_font.render("Click or press Space to continue", True, (150, 150, 150))
+            surface.blit(cont_surf, (x + width // 2 - cont_surf.get_width() // 2, y + height - 25))

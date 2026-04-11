@@ -7,10 +7,13 @@ from src.core.settings import *
 from src.entities.entity import Entity, resolve_collision_x, resolve_collision_y
 from src.entities.bank import Bank
 from src.entities.shop import Shop
+from src.systems.quest_manager import QuestManager
+from src.entities.npc import NPC
 
 class Player(Entity): 
     def __init__(self, x, y, game_manager):
         super().__init__(x, y, TILE_SIZE, TILE_SIZE, game_manager)
+        self.quest_manager = QuestManager()
         self.color = COLOR_PLAYER
         self.speed = PLAYER_SPEED
         self.inventory = Inventory()
@@ -210,6 +213,11 @@ class Player(Entity):
                                      self.game_manager.ui.active_bank = False
                                      self.game_manager.ui.active_shop = True
                                      self.game_manager.ui.show_message("Opened shop.")
+                        elif isinstance(self.interaction_target, NPC):
+                             if hasattr(self.game_manager, 'ui'):
+                                 node_id = self.interaction_target.get_interaction_node(self)
+                                 if node_id:
+                                     self.game_manager.ui.show_dialogue_node(node_id)
                         elif hasattr(self.interaction_target, 'resource_type'):
                              # It's a dropped item
                              item = self.interaction_target
