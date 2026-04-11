@@ -14,6 +14,27 @@ from src.entities.resource_node import ResourceNode
 
 # 2D HD Character Knight — Spritesheets/With shadows/*.png (128×128 cells).
 # Maps logical names to files; "sit_down" is not included in this pack.
+# One horizontal loop per sheet (15 frames @ 128px); remaining rows are other clips — do not loop all rows for walk/idle.
+KNIGHT_FIRST_ROW_ONLY_KEYS = frozenset(
+    {
+        "crouch_idle",
+        "idle",
+        "idle2",
+        "take_damage",
+        "crouch_run",
+        "walk",
+        "run",
+        "run_backwards",
+        "slide_start",
+        "slide",
+        "slide_end",
+        "strafe_left",
+        "strafe_right",
+        "rolling",
+        "front_flip",
+    }
+)
+
 KNIGHT_ANIMATION_SOURCES = {
     # Basics
     "crouch_idle": "CrouchIdle.png",
@@ -136,9 +157,8 @@ class Player(Entity):
     def _cardinal_suffix_from_vector(self, vx, vy):
         if vx == 0 and vy == 0:
             return self.facing
-        # Diagonal movement: dominant-axis pick maps equal |vx|==|vy| to vertical (walk_down),
-        # but side-view sprites rotated for _down read as facing the wrong horizontal way.
-        # Prefer left/right whenever both axes matter so e.g. down-left uses walk_left.
+        # Screen Y grows downward: vy > 0 ⇒ moving south ⇒ _down; vy < 0 ⇒ north ⇒ _up.
+        # Diagonals: prefer E/W so side-view + flip reads clearly (matches OSRS diagonal feel).
         if vx != 0 and vy != 0:
             return "_right" if vx > 0 else "_left"
         if abs(vx) > abs(vy):
@@ -151,12 +171,14 @@ class Player(Entity):
         fw = PLAYER_SHEET_FRAME_WIDTH
         fh = PLAYER_SPRITE_SIZE
 
-        def sheet(filename):
-            return load_frames_from_sheet(f"{base}/{filename}", fw, sz, frame_height=fh)
+        def sheet(filename, first_row_only=False):
+            return load_frames_from_sheet(
+                f"{base}/{filename}", fw, sz, frame_height=fh, first_row_only=first_row_only
+            )
 
         self.animations = {}
         for key, filename in KNIGHT_ANIMATION_SOURCES.items():
-            self.animations[key] = sheet(filename)
+            self.animations[key] = sheet(filename, first_row_only=(key in KNIGHT_FIRST_ROW_ONLY_KEYS))
 
         # Not in this pack (sit / social emote)
         self.animations["sit_down"] = []
@@ -177,6 +199,8 @@ class Player(Entity):
         now = pygame.time.get_ticks()
         was_hurt = self.status.startswith("hurt")
         was_attacking = self.status.startswith("attack_")
+        prev_facing = self.facing
+        prev_status = self.status
         if self.hp > 0 and now < self.hurt_until:
             self.status = "hurt" + self.facing
             return
@@ -215,6 +239,14 @@ class Player(Entity):
             self.frame_index = 0
         if prev != self.status and self.status.startswith("attack_"):
             self.frame_index = 0
+
+        if self.status.startswith("walk") or self.status.startswith("idle"):
+            if self.facing != prev_facing:
+                self.frame_index = 0
+            elif prev_status != self.status and (
+                prev_status.startswith("walk") != self.status.startswith("walk")
+            ):
+                self.frame_index = 0
 
     def animate(self, dt):
         status = self.status

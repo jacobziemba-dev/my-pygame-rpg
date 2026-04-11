@@ -28,10 +28,18 @@ def import_folder(path: str) -> list:
     return surface_list
 
 
-def load_frames_from_sheet(path: str, frame_width: int, scale_to=None, frame_height: int = None) -> list:
+def load_frames_from_sheet(
+    path: str,
+    frame_width: int,
+    scale_to=None,
+    frame_height: int = None,
+    first_row_only: bool = False,
+) -> list:
     """
-    Load frames from a horizontal strip (first row only if frame_height is set and less than sheet height).
-    Each frame is frame_width wide; frame_height defaults to full sheet height (legacy one-row tall strips).
+    Load frames from a spritesheet: left-to-right, then top-to-bottom (row-major).
+
+    - Multi-row grid: set frame_height to the cell height when the sheet is taller than one cell.
+    - first_row_only: only the top row (e.g. one 15-frame walk/idle loop; full grid is for long clips).
     If scale_to is (w, h), each frame is scaled to that size.
     """
     full_path = get_path(path)
@@ -53,12 +61,18 @@ def load_frames_from_sheet(path: str, frame_width: int, scale_to=None, frame_hei
     if fh <= 0 or fh > h:
         fh = h
 
-    n = w // frame_width
-    for i in range(n):
-        rect = pygame.Rect(i * frame_width, 0, frame_width, fh)
-        frame = sheet.subsurface(rect).copy()
-        if scale_to:
-            frame = pygame.transform.scale(frame, scale_to)
-        surface_list.append(frame)
+    cols = w // frame_width
+    rows = h // fh
+    if first_row_only:
+        rows = 1
+    for row in range(rows):
+        for col in range(cols):
+            x = col * frame_width
+            y = row * fh
+            rect = pygame.Rect(x, y, frame_width, fh)
+            frame = sheet.subsurface(rect).copy()
+            if scale_to:
+                frame = pygame.transform.scale(frame, scale_to)
+            surface_list.append(frame)
 
     return surface_list
