@@ -9,6 +9,7 @@ class Projectile:
         self.damage = damage
         self.speed = 8
         self.hit = False
+        self.color = (255, 200, 50)
 
     def update(self, dt):
         dx = self.target.rect.centerx - self.rect.centerx
@@ -22,4 +23,4 @@ class Projectile:
 
     def draw(self, surface, camera=None):
         draw_rect = camera.apply(self.rect) if camera else self.rect
-        pygame.draw.rect(surface, (255, 200, 50), draw_rect)
+        pygame.draw.rect(surface, self.color, draw_rect)

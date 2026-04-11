@@ -687,6 +687,16 @@ class UIManager:
                         break
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1: # Left click
+                if self.active_tab == 'combat' and self.player.combat_mode == "magic":
+                    panel_w, panel_h = 300, 440
+                    panel_x = SCREEN_WIDTH - panel_w
+                    panel_y = SCREEN_HEIGHT - panel_h + 30 
+                    for i, (s_key, spell) in enumerate(self.player.spells.items()):
+                        rect = pygame.Rect(panel_x + 8, panel_y + 48 + i * 21, panel_w - 16, 20)
+                        if rect.collidepoint(event.pos):
+                            self.player.active_spell = s_key
+                            self.show_message(f"Auto-cast set to: {spell['name']}")
+                            return "spell_selected", i
                 if self.active_bank:
                      p_rects = self.get_bank_slot_rects(is_player_inv=True)
                      for i, rect in enumerate(p_rects):
@@ -1187,25 +1197,41 @@ class UIManager:
         toggle_surf = self.small_font.render("[M] Switch Mode", True, (150, 150, 150))
         surface.blit(toggle_surf, (panel_x + 8, panel_y + 26))
 
-        melee_styles  = [("accurate",   "Accurate   (+ATK xp)"),
-                         ("aggressive", "Aggressive (+STR xp)"),
-                         ("defensive",  "Defensive  (+DEF xp)")]
-        ranged_styles = [("accurate",   "Accurate   (+RNG xp)"),
-                         ("rapid",      "Rapid      (+RNG xp)"),
-                         ("longrange",  "Longrange  (+RNG+DEF)")]
+        if mode == "magic":
+            for i, (s_key, spell) in enumerate(self.player.spells.items()):
+                btn_y     = panel_y + 48 + i * 21
+                is_active = (s_key == getattr(self.player, "active_spell", "none"))
+                bg        = (60, 55, 15) if is_active else (35, 35, 35)
+                # Ensure it fits
+                rect = pygame.Rect(panel_x + 8, btn_y, panel_w - 16, 20)
+                pygame.draw.rect(surface, bg, rect)
+                
+                req = spell["req"]
+                can_cast = self.player.skills.magic.level >= req
+                color     = (255, 220, 80) if is_active and can_cast else ((150,150,150) if can_cast else (180, 50, 50))
+                prefix    = "* " if is_active else "  "
+                btn_surf  = self.small_font.render(prefix + spell["name"] + f" (Lv.{req})", True, color)
+                surface.blit(btn_surf, (panel_x + 12, btn_y + 2))
+        else:
+            melee_styles  = [("accurate",   "Accurate   (+ATK xp)"),
+                             ("aggressive", "Aggressive (+STR xp)"),
+                             ("defensive",  "Defensive  (+DEF xp)")]
+            ranged_styles = [("accurate",   "Accurate   (+RNG xp)"),
+                             ("rapid",      "Rapid      (+RNG xp)"),
+                             ("longrange",  "Longrange  (+RNG+DEF)")]
 
-        styles  = melee_styles if mode == "melee" else ranged_styles
-        current = self.player.combat_style
+            styles  = melee_styles if mode == "melee" else ranged_styles
+            current = self.player.combat_style
 
-        for i, (sid, label) in enumerate(styles):
-            btn_y     = panel_y + 48 + i * 26
-            is_active = (sid == current)
-            bg        = (60, 55, 15) if is_active else (35, 35, 35)
-            pygame.draw.rect(surface, bg, (panel_x + 8, btn_y, panel_w - 16, 22))
-            color     = (255, 220, 80) if is_active else (180, 180, 180)
-            prefix    = "* " if is_active else "  "
-            btn_surf  = self.small_font.render(prefix + label, True, color)
-            surface.blit(btn_surf, (panel_x + 12, btn_y + 3))
+            for i, (sid, label) in enumerate(styles):
+                btn_y     = panel_y + 48 + i * 26
+                is_active = (sid == current)
+                bg        = (60, 55, 15) if is_active else (35, 35, 35)
+                pygame.draw.rect(surface, bg, (panel_x + 8, btn_y, panel_w - 16, 22))
+                color     = (255, 220, 80) if is_active else (180, 180, 180)
+                prefix    = "* " if is_active else "  "
+                btn_surf  = self.small_font.render(prefix + label, True, color)
+                surface.blit(btn_surf, (panel_x + 12, btn_y + 3))
 
     def show_dialogue(self, npc_name, lines):
         self.active_dialogue = {"npc": npc_name, "lines": lines, "line_index": 0}

@@ -163,6 +163,37 @@
       "xp": 100,
       "skill": "smithing",
       "station": "workbench"
+    },
+    {
+      "name": "air_rune",
+      "label": "Air Rune",
+      "inputs": {"rune_essence": 1},
+      "outputs": {"air_rune": 2},
+      "min_level": 1,
+      "xp": 5,
+      "skill": "runecrafting",
+      "station": "air_altar",
+      "duration": 50
+    },
+    {
+      "name": "mind_rune",
+      "label": "Mind Rune",
+      "inputs": {"rune_essence": 1},
+      "outputs": {"mind_rune": 2},
+      "min_level": 2,
+      "xp": 5,
+      "skill": "runecrafting",
+      "station": "mind_altar",
+      "duration": 50
+    },
+    {
+      "name": "staff_of_air",
+      "label": "Staff of Air",
+      "inputs": {"wood": 1, "air_rune": 5},
+      "outputs": {"staff_of_air": 1},
+      "min_level": 5,
+      "xp": 20,
+      "skill": "crafting"
     }
   ]
 }

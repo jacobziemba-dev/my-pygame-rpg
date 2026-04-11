@@ -29,6 +29,7 @@ NUM_BUSHES = 10
 NUM_FISHING_SPOTS = 6
 NUM_CHESTS = 5
 NUM_COAL_ROCKS = 8
+NUM_ESSENCE_ROCKS = 15
 
 # Combat settings
 RANGED_ATTACK_RANGE = 250  # px; used when bow is equipped
@@ -43,6 +44,7 @@ EQUIPMENT_REQUIREMENTS = {
     "steel_armor": ("defense", 20),
     "steel_axe": ("attack", 20),
     "steel_pickaxe": ("attack", 20),
+    "staff_of_air": ("magic", 1),
 }
 
 # Enemy type definitions

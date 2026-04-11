@@ -55,6 +55,10 @@ class GameManager:
         self.stations.append(
             Station(_station_x, _hub_bank_y + TILE_SIZE * 4, "stove", "Stove")
         )
+        
+        # Altars
+        self.stations.append(Station(_hub_bank_x + 300, _hub_bank_y - 200, "air_altar", "Air Altar"))
+        self.stations.append(Station(_hub_bank_x - 300, _hub_bank_y - 200, "mind_altar", "Mind Altar"))
 
         self.crops = []
         self.recipe_manager = RecipeManager()
@@ -124,6 +128,11 @@ class GameManager:
             rx = random.randint(50, MAP_WIDTH - 50)
             ry = random.randint(50, MAP_HEIGHT - 50)
             self.resources.append(ResourceNode(rx, ry, "coal_rock", 50, "pickaxe", "coal", hp=4, respawn_time=40000, min_level=15))
+
+        for _ in range(NUM_ESSENCE_ROCKS):
+            rx = random.randint(50, MAP_WIDTH - 50)
+            ry = random.randint(50, MAP_HEIGHT - 50)
+            self.resources.append(ResourceNode(rx, ry, "essence_rock", 40, "pickaxe", "rune_essence", hp=8, respawn_time=10000, min_level=1))
 
     def _generate_enemies(self):
         for etype, count in [("goblin", NUM_GOBLINS), ("skeleton", NUM_SKELETONS), ("guard", NUM_GUARDS)]:
@@ -939,6 +948,49 @@ class GameManager:
                             # Move closer — keep attack state so next tick re-evaluates
                             self.player.target_destination = (enemy.rect.centerx, enemy.rect.centery)
                             self.player.waypoints = []
+                    elif self.player.combat_mode == "magic" and self.player.has_staff():
+                        import math
+                        dx = enemy.rect.centerx - self.player.rect.centerx
+                        dy = enemy.rect.centery - self.player.rect.centery
+                        dist = math.hypot(dx, dy)
+                        if dist <= RANGED_ATTACK_RANGE:
+                            spell_key = getattr(self.player, "active_spell", "wind_strike")
+                            spell = getattr(self.player, "spells", {}).get(spell_key, None)
+                            if not spell:
+                                self.ui.show_message("No active spell!")
+                                self.player.current_action = None
+                                self.player.action_target = None
+                                continue
+                                
+                            if self.player.skills.magic.level < spell["req"]:
+                                self.ui.show_message(f"Requires Magic Lv.{spell['req']}.")
+                                self.player.current_action = None
+                                self.player.action_target = None
+                                continue
+                                
+                            has_runes = True
+                            for rune, amt in spell["cost"].items():
+                                if self.player.inventory.items.get(rune, 0) < amt:
+                                    has_runes = False
+                                    break
+                                    
+                            if has_runes:
+                                for rune, amt in spell["cost"].items():
+                                    self.player.inventory.remove_item(rune, amt)
+                                magic_hit = spell["max_hit"] + (self.player.skills.magic.level // 4)
+                                proj = Projectile(
+                                    self.player.rect.centerx, self.player.rect.centery,
+                                    enemy, magic_hit
+                                )
+                                proj.color = (0, 200, 255)
+                                self.projectiles.append(proj)
+                            else:
+                                self.ui.show_message("Not enough runes!")
+                                self.player.current_action = None
+                                self.player.action_target = None
+                        else:
+                            self.player.target_destination = (enemy.rect.centerx, enemy.rect.centery)
+                            self.player.waypoints = []
                     else:
                         # Melee branch
                         attack_rect = self.player.rect.inflate(80, 80)
@@ -999,14 +1051,14 @@ class GameManager:
                             leveled_up = self._award_xp(primary, 4, self.player.rect.centerx, self.player.rect.top)
                             if secondary:
                                 self._award_xp(secondary, 2, self.player.rect.centerx, self.player.rect.top)
-                            self.ui.show_message(f"Ranged hit {proj.target.name} for {dmg}!")
+                            self.ui.show_message(f"Hit {proj.target.name} for {dmg}!")
                             if leveled_up:
                                 lvl = getattr(self.player.skills, primary).level
                                 self.ui.show_message(f"{primary.capitalize()} level up! Now level {lvl}")
                             if proj.target.hp <= 0:
                                 self._kill_enemy(proj.target)
                         else:
-                            self.ui.show_message(f"Ranged missed {proj.target.name}!")
+                            self.ui.show_message(f"Missed {proj.target.name}!")
                     self.projectiles.remove(proj)
         else:
             # Player is dead: start fade and respawn sequence

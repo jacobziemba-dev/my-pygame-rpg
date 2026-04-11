@@ -6,18 +6,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Recently Implemented
 
-- **28-slot inventory cap** is now enforced across pickup, gathering, crafting outputs, station collection, harvesting, and bank withdraw paths. Full inventory shows: "Your inventory is full."
-- **Level-gated equipment/tools** are now active via centralized requirements (`EQUIPMENT_REQUIREMENTS` in `settings.py`):
-  - iron_sword: Attack Lv.5
-  - iron_armor: Defense Lv.10
-  - iron_axe: Attack Lv.5
-  - iron_pickaxe: Attack Lv.5
-- **Unequip flow implemented**: right-click equipped items in inventory and choose **Remove**. If inventory has no free slot, removal is blocked with a message.
-- **Graceful terminal stop**: stopping with Ctrl+C exits cleanly without traceback spam.
-- **XP drop messages implemented**: yellow floating XP text now appears near the player for XP gains (gathering, crafting, station collection, farming, combat hits, kills, and defense XP on damage taken).
-- **Safe death/respawn system**: when HP ≤ 0, screen fades to black over 600ms, then player respawns at bank spawn with full HP, clean combat state, and all items/equipment intact (RuneScape-style safe death). Shows "You died!" and "You have been recovered!" messages.
-- **Bones-to-Prayer bury action**: right-click bones in inventory and select "Bury Bone" to consume 1 bone and award +4 Prayer XP with floating XP feedback.
-- **General Store MVP implemented**: shop NPC near spawn with RS-style right-click **Trade** action. Buy/sell panel supports coin-based transactions, fixed prices, stock counts, and inventory-space checks.
+### Visual & Aesthetic Overhaul (Milestone 3 Complete)
+- **Authentic Stone UI**: All game panels (inventory, shop, bank, dialogues) now render using seamlessly tiled stone textures (`stone_panel.png`) instead of flat rectangles.
+- **Dynamic Circular Minimap**: Added a real-time minimap overlay tracking the player, NPCs, ground items, and resources. 
+- **Procedural World Mapping**: Replaced the static flat grass with noise-based procedural world boundaries consisting of dirt paths and water edges. 
+- **Typography & Interaction**: Ground drops feature text labels with drop shadows. Hitsplats use dynamic red/blue starburst sprites. Left-clicking to pathfind spawns an authentic flashing yellow crosshair.
+- **The Steel Tier & Economy**: Added `coal_rock` natively scaling off Lv. 15 Mining. `coins` separated from base inventory into a tracking UI overlay (money pouch system). `Talk-to` context actions built for interactive RS dialogues.
+
+---
+
+## 🗺️ Milestone 4: Magic & The Offline Quest System
+
+> **Development Constraint**: This game is strictly an OFFLINE, single-player RPG. Under no circumstances will online, multiplayer, or networking mechanics be introduced. All features must simulate the rich MMO experience natively without relying on external servers.
+
+### Phase 1: Magic Combat & Runecrafting
+- **The Runecrafting Loop**:
+  - Add `rune_essence_rock` entities scaling off the Mining skill. Mining yields `rune_essence`.
+  - Add Altar objects (e.g., Air Altar). Players interact with Altars to convert essence into specific elemental runes, awarding Runecrafting XP.
+- **The Spellbook UI**:
+  - Create a new UI Sidebar tab containing a grid of castable spells.
+  - Each spell dictates a minimum Magic level and specific rune cost ratios (e.g., *Air Strike* requires 1 Mind Rune, 1 Air Rune).
+- **Magic Combat Integration**:
+  - Add magical weapons (staves/wands) that, when equipped, route attack logic to use the Magic skill.
+  - Update the 600ms combat loop in `game_manager.py`: When attacking via magic, verify the inventory has the required runes for the active spell, deduct the runes, and calculate damage against the enemy's magical defense using quadratic XP scaling.
+
+### Phase 2: The Single-Player Quest Engine
+- **Stateful Dialogue Trees**:
+  - Upgrade from linear flavor text to a robust dialogue payload system capable of multiple-choice branching paths, player responses, item requirement checks, and quest state flags.
+- **Quest Journal UI**:
+  - Add a dedicated Quest list in the sidebar showing Unlocked, Active, and Completed quests in classic red/yellow/green text formatting.
+- **"The Baker's Assistant" Starter Quest**:
+  - A multi-step introductory quest requiring the player to speak to a Baker NPC, agree to the quest, gather three specific processed materials (e.g., Wheat, Egg, Milk), and return them.
+  - On completion, award the player highly visible Quest Points, a lump sum of Cooking XP, and access to a previously locked high-tier Stove.
 
 ## Vision: A RuneScape-Inspired RPG
 
@@ -50,6 +70,7 @@ This game is a **top-down 2D RPG built with pygame-ce**, designed to feel and pl
 
 ### What this game is NOT
 
+- **Absolutely NOT a multiplayer or online game** (There is zero networking, zero connection handling, and zero multiplayer mechanics. It is exclusively an offline, single-player recreation).
 - Not an action game (no real-time skill combos, no dodge-rolling, no stamina bars)
 - Not a story-driven RPG (no cutscenes, minimal dialogue — RS has almost none)
 - Not a platformer or shooter

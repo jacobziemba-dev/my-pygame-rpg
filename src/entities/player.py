@@ -24,8 +24,16 @@ class Player(Entity):
         self.base_attack = 5
         self.base_defense = 0
         self.equipped_items = []
-        self.combat_mode  = "melee"       # "melee" | "ranged"
-        self.combat_style = "aggressive"  # melee: accurate/aggressive/defensive | ranged: accurate/rapid/longrange
+        self.combat_mode  = "melee"       # "melee" | "ranged" | "magic"
+        self.combat_style = "aggressive"  # combat specific attack type
+        
+        self.spells = {
+            "wind_strike": {"name": "Wind Strike", "req": 1, "cost": {"mind_rune": 1, "air_rune": 1}, "max_hit": 2, "xp": 5},
+            "water_strike": {"name": "Water Strike", "req": 5, "cost": {"mind_rune": 1, "water_rune": 1, "air_rune": 1}, "max_hit": 4, "xp": 7},
+            "earth_strike": {"name": "Earth Strike", "req": 9, "cost": {"mind_rune": 1, "earth_rune": 2, "air_rune": 1}, "max_hit": 6, "xp": 9},
+            "fire_strike": {"name": "Fire Strike", "req": 13, "cost": {"mind_rune": 1, "fire_rune": 3, "air_rune": 2}, "max_hit": 8, "xp": 11}
+        }
+        self.active_spell = "wind_strike"
         
         self.current_action = None
         self.action_target = None
@@ -306,12 +314,18 @@ class Player(Entity):
             self.combat_mode, self.combat_style = "melee", "aggressive"
         elif mode == "ranged":
             self.combat_mode, self.combat_style = "ranged", "rapid"
+        elif mode == "magic":
+            self.combat_mode, self.combat_style = "magic", "magic"
 
     def set_combat_style(self, style):
         melee_styles  = {"accurate", "aggressive", "defensive"}
         ranged_styles = {"accurate", "rapid", "longrange"}
-        valid = melee_styles if self.combat_mode == "melee" else ranged_styles
-        if style in valid:
+        magic_styles = {"magic"}
+        if self.combat_mode == "melee" and style in melee_styles:
+            self.combat_style = style
+        elif self.combat_mode == "ranged" and style in ranged_styles:
+            self.combat_style = style
+        elif self.combat_mode == "magic" and style in magic_styles:
             self.combat_style = style
 
     def get_xp_skill_for_hit(self):
@@ -322,12 +336,14 @@ class Player(Entity):
                 "aggressive": ("strength", None),
                 "defensive":  ("defense",  None),
             }.get(self.combat_style, ("strength", None))
-        else:
+        elif self.combat_mode == "ranged":
             return {
                 "accurate":  ("ranged", None),
                 "rapid":     ("ranged", None),
                 "longrange": ("ranged", "defense"),
             }.get(self.combat_style, ("ranged", None))
+        else:
+            return ("magic", None)
 
     def _check_item_requirement(self, item_name):
         req = EQUIPMENT_REQUIREMENTS.get(item_name)
@@ -350,16 +366,19 @@ class Player(Entity):
                 self.inventory.remove_item(item_name, 1)
                 return True, "Healed 15 HP with cooked fish!"
             # For gear, equip it
-            if item_name in ["sword", "iron_sword", "iron_armor", "shortbow"]:
+            equippable = ["sword", "iron_sword", "iron_armor", "iron_axe", "iron_pickaxe",
+                          "steel_sword", "steel_armor", "steel_axe", "steel_pickaxe", "shortbow", "staff_of_air"]
+            if item_name in equippable:
                 meets_req, req_msg = self._check_item_requirement(item_name)
                 if not meets_req:
                     return False, req_msg
                 if item_name not in self.equipped_items:
                     self.inventory.remove_item(item_name, 1)
                     self.equipped_items.append(item_name)
-                    if item_name == "shortbow":
-                        self.combat_mode  = "ranged"
-                        self.combat_style = "rapid"
+                    if "bow" in item_name:
+                        self.set_combat_mode("ranged")
+                    elif "staff" in item_name:
+                        self.set_combat_mode("magic")
                     return True, f"Equipped {item_name.replace('_', ' ').title()}!"
         return False, "Cannot use this item."
 
@@ -370,7 +389,9 @@ class Player(Entity):
             return False, "Your inventory is full."
 
         self.equipped_items.remove(item_name)
-        if item_name == "shortbow" and self.combat_mode == "ranged" and not self.has_bow():
+        if "bow" in item_name and self.combat_mode == "ranged" and not self.has_bow():
+            self.set_combat_mode("melee")
+        if "staff" in item_name and self.combat_mode == "magic" and not self.has_staff():
             self.set_combat_mode("melee")
         return True, f"Removed {item_name.replace('_', ' ').title()}."
 
