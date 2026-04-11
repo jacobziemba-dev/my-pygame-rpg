@@ -1,6 +1,8 @@
 import pygame
 import os
 
+_font = None
+
 class ResourceItem:
     def __init__(self, x, y, resource_type):
         self.resource_type = resource_type
@@ -26,8 +28,25 @@ class ResourceItem:
                 pass
             
     def draw(self, surface, camera=None):
+        global _font
+        if _font is None:
+            pygame.font.init()
+            _font = pygame.font.SysFont(None, 18)
+            
         draw_rect = camera.apply(self.rect) if camera else self.rect
         if self.image:
             surface.blit(self.image, draw_rect)
         else:
             pygame.draw.rect(surface, self.color, draw_rect)
+            
+        # Draw RS-style label below the item
+        display_name = self.resource_type.replace('_', ' ').title()
+        
+        shadow = _font.render(display_name, True, (0, 0, 0))
+        text = _font.render(display_name, True, (255, 255, 255))
+        
+        tx = draw_rect.centerx - text.get_width() // 2
+        ty = draw_rect.bottom + 2
+        
+        surface.blit(shadow, (tx + 1, ty + 1))
+        surface.blit(text, (tx, ty))

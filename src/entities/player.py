@@ -33,6 +33,7 @@ class Player(Entity):
 
         self.target_destination = None
         self.interaction_target = None
+        self.interaction_type = "default"
         self.waypoints = []
         
         # Animations
@@ -87,7 +88,7 @@ class Player(Entity):
 
         self.image = animation[int(self.frame_index)]
 
-    def set_target_destination(self, x, y, target_entity=None, waypoints=None):
+    def set_target_destination(self, x, y, target_entity=None, waypoints=None, action_type="default"):
         if waypoints:
             self.waypoints = list(waypoints[1:])
             self.target_destination = waypoints[0]
@@ -95,6 +96,7 @@ class Player(Entity):
             self.waypoints = []
             self.target_destination = (x, y)
         self.interaction_target = target_entity
+        self.interaction_type = action_type
         self.current_action = None
         self.action_target = None
 
@@ -185,15 +187,21 @@ class Player(Entity):
                         elif isinstance(self.interaction_target, Bank):
                              # It's the Bank
                              if hasattr(self.game_manager, 'ui'):
-                                 self.game_manager.ui.active_shop = False
-                                 self.game_manager.ui.active_bank = True
-                                 self.game_manager.ui.show_message("Opened bank vault.")
+                                 if getattr(self, "interaction_type", "default") == "talk":
+                                     self.game_manager.ui.show_dialogue("Bank Teller", ["Good day! How can I help you?", "Please use my booth to access your items."])
+                                 else:
+                                     self.game_manager.ui.active_shop = False
+                                     self.game_manager.ui.active_bank = True
+                                     self.game_manager.ui.show_message("Opened bank vault.")
                         elif isinstance(self.interaction_target, Shop):
                              # It's the Shop
                              if hasattr(self.game_manager, 'ui'):
-                                 self.game_manager.ui.active_bank = False
-                                 self.game_manager.ui.active_shop = True
-                                 self.game_manager.ui.show_message("Opened shop.")
+                                 if getattr(self, "interaction_type", "default") == "talk":
+                                     self.game_manager.ui.show_dialogue("Shopkeeper", ["Welcome to my General Store!", "Trade with me to buy and sell supplies."])
+                                 else:
+                                     self.game_manager.ui.active_bank = False
+                                     self.game_manager.ui.active_shop = True
+                                     self.game_manager.ui.show_message("Opened shop.")
                         elif hasattr(self.interaction_target, 'resource_type'):
                              # It's a dropped item
                              item = self.interaction_target

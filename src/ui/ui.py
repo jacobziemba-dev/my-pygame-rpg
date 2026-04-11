@@ -4,10 +4,24 @@ from src.systems.recipe_manager import RecipeManager
 from src.core.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 
 class UIManager:
-    def __init__(self, player, shop=None):
-        self.player = player
-        self.shop = shop
+    def __init__(self, game_manager):
+        self.gm = game_manager
+        self.player = game_manager.player
+        self.shop = getattr(game_manager, 'shop', None)
         self.recipe_manager = RecipeManager()
+        try:
+            self.stone_texture = pygame.image.load(os.path.join("assets", "sprites", "ui", "stone_texture.png")).convert()
+        except:
+            self.stone_texture = None
+            
+        # Load custom tab icons
+        self.tab_icons = {}
+        for tab in ["inventory", "skills", "combat", "crafting"]:
+            try:
+                img = pygame.image.load(os.path.join("assets", "sprites", "ui", f"tab_{tab}.png")).convert_alpha()
+                self.tab_icons[tab] = pygame.transform.scale(img, (28, 28))
+            except:
+                self.tab_icons[tab] = None
         pygame.font.init() # Ensure font module is initialized
         self.font = pygame.font.SysFont(None, 24)
         self.small_font = pygame.font.SysFont(None, 18)
@@ -26,6 +40,8 @@ class UIManager:
         self.station_index = 0
         self.skills_scroll_y = 0
         
+        self.active_dialogue = None
+
         self.item_images = {}
         self._load_item_sprites()
 
@@ -56,6 +72,66 @@ class UIManager:
         self.is_fading = False
         self.fade_start_time = 0
         self.fade_duration = 600  # milliseconds
+
+
+    def _draw_textured_rect(self, surface, rect, border_color=(50, 40, 20), border_width=3):
+        if self.stone_texture:
+            tw, th = self.stone_texture.get_size()
+            for x in range(rect.x, rect.x + rect.w, tw):
+                for y in range(rect.y, rect.y + rect.h, th):
+                    w = min(tw, rect.x + rect.w - x)
+                    h = min(th, rect.y + rect.h - y)
+                    surface.blit(self.stone_texture, (x, y), (0, 0, w, h))
+        else:
+            pygame.draw.rect(surface, (50, 40, 30), rect)
+            
+        if border_color:
+            pygame.draw.rect(surface, border_color, rect, border_width)
+            pygame.draw.rect(surface, (20, 15, 10), rect, 1) 
+            pygame.draw.rect(surface, (20, 15, 10), (rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2), 1)
+
+    def _draw_minimap(self, surface):
+        mm_radius = 80
+        mm_x = surface.get_width() - mm_radius - 20
+        mm_y = 20 + mm_radius
+        
+        mm_surf = pygame.Surface((mm_radius*2, mm_radius*2), pygame.SRCALPHA)
+        pygame.draw.circle(mm_surf, (30, 80, 30), (mm_radius, mm_radius), mm_radius) # base color
+        
+        TILE_PXL = 4
+        px, py = self.player.rect.centerx, self.player.rect.centery
+        
+        def world_to_mm(wx, wy):
+            dx = (wx - px) * (TILE_PXL / 32.0)
+            dy = (wy - py) * (TILE_PXL / 32.0)
+            return (int(mm_radius + dx), int(mm_radius + dy))
+            
+        for r in getattr(self.gm, 'resource_nodes', []):
+            if not getattr(r, 'depleted', False):
+                mx, my = world_to_mm(r.rect.centerx, r.rect.centery)
+                if (mx-mm_radius)**2 + (my-mm_radius)**2 < mm_radius**2:
+                    pygame.draw.circle(mm_surf, (0, 255, 255), (mx, my), 2)
+                    
+        for item in getattr(self.gm, 'ground_items', []):
+           mx, my = world_to_mm(item.rect.centerx, item.rect.centery)
+           if (mx-mm_radius)**2 + (my-mm_radius)**2 < mm_radius**2:
+               pygame.draw.circle(mm_surf, (255, 50, 50), (mx, my), 1)
+
+        for e in getattr(self.gm, 'enemies', []):
+            mx, my = world_to_mm(e.rect.centerx, e.rect.centery)
+            if (mx-mm_radius)**2 + (my-mm_radius)**2 < mm_radius**2:
+                pygame.draw.circle(mm_surf, (255, 255, 0), (mx, my), 2)
+                
+        # Draw player
+        pygame.draw.circle(mm_surf, (255, 255, 255), (mm_radius, mm_radius), 2)
+
+        # Draw frame
+        pygame.draw.circle(surface, (50, 40, 20), (mm_x, mm_y), mm_radius + 4)
+        pygame.draw.circle(surface, (20, 15, 10), (mm_x, mm_y), mm_radius + 4, 1)
+        pygame.draw.circle(surface, (20, 15, 10), (mm_x, mm_y), mm_radius + 5, 2)
+        
+        surface.blit(mm_surf, (mm_x - mm_radius, mm_y - mm_radius))
+        pygame.draw.circle(surface, (0, 0, 0), (mm_x, mm_y), mm_radius, 1)
 
     def _draw_shop_inventory(self, surface):
         """Draw the shop UI with buy and sell sections."""
@@ -245,8 +321,6 @@ class UIManager:
         return h
 
     def update(self):
-        if self.message and pygame.time.get_ticks() - self.message_timer > self.message_duration:
-            self.message = ""
         now = pygame.time.get_ticks()
         self.hit_splats = [s for s in self.hit_splats if now - s[3] < self._splat_duration]
         self.xp_drops = [d for d in self.xp_drops if now - d[3] < self._xp_drop_duration]
@@ -327,6 +401,8 @@ class UIManager:
             self._draw_shop_inventory(surface)
         if getattr(self, 'active_station', None):
             self._draw_station_menu(surface)
+        if getattr(self, 'active_dialogue', None):
+            self._draw_dialogue(surface)
 
         self._draw_hotbar(surface)
 
@@ -338,8 +414,10 @@ class UIManager:
 
         # Draw Chatbox Messages
         chat_x, chat_y = 10, surface.get_height() - 150
-        pygame.draw.rect(surface, (20, 20, 20, 180), (chat_x, chat_y, 400, 140))
-        pygame.draw.rect(surface, (80, 80, 80), (chat_x, chat_y, 400, 140), 2)
+        self._draw_textured_rect(surface, pygame.Rect(chat_x, chat_y, 450, 140))
+        
+        # Minimap
+        self._draw_minimap(surface)
         
         y_offset = chat_y + 10
         now = pygame.time.get_ticks()
@@ -357,26 +435,39 @@ class UIManager:
         panel_y = surface.get_height() - panel_h
 
         # Background
-        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        bg.fill((45, 35, 25, 240))
-        surface.blit(bg, (panel_x, panel_y))
-        pygame.draw.rect(surface, (80, 60, 40), (panel_x, panel_y, panel_w, panel_h), 2)
+        self._draw_textured_rect(surface, pygame.Rect(panel_x, panel_y, panel_w, panel_h))
 
-        # Tabs
-        tabs = [("inventory", "Inv"), ("skills", "Skl"), ("combat", "Cbt"), ("crafting", "Crf")]
-        tab_w = panel_w // len(tabs)
-        tab_h = 30
-
+        # Tabs (OSRS protruded style)
+        tabs = [("combat", "Cbt"), ("skills", "Skl"), ("inventory", "Inv"), ("crafting", "Crf")]
+        tab_w = 40
+        tab_h = 34
+        spacing = (panel_w - (len(tabs) * tab_w)) // (len(tabs) + 1)
+        
+        # We draw tabs sticking OUT of the top panel_y boundary, so panel_y is the top of the content.
         for i, (tab_id, label) in enumerate(tabs):
-            tx = panel_x + i * tab_w
-            ty = panel_y
-            color = (100, 80, 50) if self.active_tab == tab_id else (60, 45, 30)
-            pygame.draw.rect(surface, color, (tx, ty, tab_w, tab_h))
-            pygame.draw.rect(surface, (120, 90, 60), (tx, ty, tab_w, tab_h), 1)
+            tx = panel_x + spacing + i * (tab_w + spacing)
+            ty = panel_y - tab_h + 2  # slight overlap
             
-            text_color = (255, 215, 0) if self.active_tab == tab_id else (180, 180, 180)
-            lbl_surf = self.font.render(label, True, text_color)
-            surface.blit(lbl_surf, (tx + tab_w//2 - lbl_surf.get_width()//2, ty + 6))
+            # Draw tab protrusion (redder stone for unselected, brighter for selected)
+            bg_color = (80, 60, 40) if self.active_tab == tab_id else (50, 35, 20)
+            tab_rect = pygame.Rect(tx, ty, tab_w, tab_h)
+            
+            pygame.draw.rect(surface, bg_color, tab_rect, border_top_left_radius=6, border_top_right_radius=6)
+            pygame.draw.rect(surface, (20, 15, 10), tab_rect, 2, border_top_left_radius=6, border_top_right_radius=6)
+            
+            if self.active_tab == tab_id:
+                # remove bottom border line connecting to main panel
+                pygame.draw.line(surface, bg_color, (tx+2, panel_y+1), (tx+tab_w-3, panel_y+1), 3)
+
+            icon = getattr(self, 'tab_icons', {}).get(tab_id)
+            if icon:
+                ix = tx + (tab_w - icon.get_width()) // 2
+                iy = ty + (tab_h - icon.get_height()) // 2
+                surface.blit(icon, (ix, iy))
+            else:
+                text_color = (255, 215, 0) if self.active_tab == tab_id else (180, 180, 180)
+                lbl_surf = self.small_font.render(label, True, text_color)
+                surface.blit(lbl_surf, (tx + tab_w//2 - lbl_surf.get_width()//2, ty + 8))
 
         # Content rect
         crect = pygame.Rect(panel_x, panel_y + tab_h, panel_w, panel_h - tab_h)
@@ -401,7 +492,7 @@ class UIManager:
         slot_size = 40
         padding = 4
         
-        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
+        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
         
         for i in range(len(active_items)):
             row = i // slots_per_row
@@ -514,13 +605,20 @@ class UIManager:
             panel_w, panel_h = 300, 440
             panel_x = SCREEN_WIDTH - panel_w
             panel_y = SCREEN_HEIGHT - panel_h
-            if panel_x <= event.pos[0] <= panel_x + panel_w and panel_y <= event.pos[1] <= panel_y + 30:
-                # Clicked a tab
-                idx = (event.pos[0] - panel_x) // (panel_w // 4)
-                tabs = ["inventory", "skills", "combat", "crafting"]
-                if 0 <= idx < 4:
-                    self.toggle_tab(tabs[idx])
-                return "tab_clicked", -1
+            # Check protruded tabs
+            tab_w = 40
+            spacing = (panel_w - (4 * tab_w)) // 5
+            for i, tab in enumerate(["combat", "skills", "inventory", "crafting"]):
+                tx = panel_x + spacing + i * (tab_w + spacing)
+                ty = panel_y - 34 + 2
+                if tx <= event.pos[0] <= tx + tab_w and ty <= event.pos[1] <= ty + 34:
+                    self.toggle_tab(tab)
+                    return "tab_clicked", -1
+
+        if getattr(self, 'active_dialogue', None):
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                return "next_dialogue", -1
+            return None, None
 
         if not (self.active_tab or getattr(self, 'active_bank', False) or getattr(self, 'active_shop', False)):
             return None, None
@@ -601,9 +699,7 @@ class UIManager:
         panel_x = (surface.get_width() - panel_w) // 2
         panel_y = (surface.get_height() - panel_h) // 2
 
-        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel.fill((20, 20, 20, 220))
-        surface.blit(panel, (panel_x, panel_y))
+
 
         # Header
         title = self.font.render(f"{self.active_station.name} Menu", True, (255, 215, 0))
@@ -651,9 +747,7 @@ class UIManager:
             panel_x = (surface.get_width() - panel_w) // 2
             panel_y = (surface.get_height() - panel_h) // 2
 
-        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel.fill((20, 20, 20, 220))
-        surface.blit(panel, (panel_x, panel_y))
+
 
         # Header
         title = self.font.render("Hand Crafting", True, (255, 215, 0))
@@ -713,10 +807,7 @@ class UIManager:
             panel_x = surface.get_width() - panel_w - 10
             panel_y = 10
 
-        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel.fill((0, 0, 0, 200))
-        surface.blit(panel, (panel_x, panel_y))
-        pygame.draw.rect(surface, (80, 70, 40), (panel_x, panel_y, panel_w, panel_h), 2)
+
 
         title = self.font.render("Skills", True, (255, 215, 0))
         surface.blit(title, (panel_x + 8, panel_y + 6))
@@ -791,11 +882,7 @@ class UIManager:
             panel_x = (surface.get_width() - panel_w) // 2
             panel_y = (surface.get_height() - panel_h) // 2
 
-        # Draw Background Panel
-        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel.fill((30, 30, 30, 240))
-        surface.blit(panel, (panel_x, panel_y))
-        pygame.draw.rect(surface, (100, 100, 100), (panel_x, panel_y, panel_w, panel_h), 2)
+
 
         # Header
         title = self.font.render("Inventory", True, (255, 215, 0))
@@ -803,11 +890,11 @@ class UIManager:
         pygame.draw.line(surface, (70, 70, 70), (panel_x + 10, panel_y + 30), (panel_x + panel_w - 10, panel_y + 30), 2)
 
         # Inventory Section
-        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
+        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
         if self.inventory_index >= len(active_items) and len(active_items) > 0:
             self.inventory_index = len(active_items) - 1
             
-        self._draw_inventory_slots(surface, self.player.inventory, panel_x + 10, panel_y + 40, slots_per_row=5, highlight_index=self.inventory_index)
+        self._draw_inventory_slots(surface, self.player.inventory, panel_x + 10, panel_y + 40, slots_per_row=5, highlight_index=self.inventory_index, hide_coins=True)
 
         # Show selected item name (Detail section)
         if 0 <= self.inventory_index < len(active_items):
@@ -834,15 +921,24 @@ class UIManager:
             none_surf = self.font.render("None", True, (100, 100, 100))
             surface.blit(none_surf, (panel_x + 30, gear_y + 40))
 
+        # Coin Box
+        coins = self.player.inventory.get_item_count("coins")
+        coin_y = panel_y + panel_h - 45
+        pygame.draw.line(surface, (70, 70, 70), (panel_x + 10, coin_y - 5), (panel_x + panel_w - 10, coin_y - 5), 2)
+        coin_surf = self.font.render(f"Coins: {coins:,}", True, (255, 215, 0))
+        surface.blit(coin_surf, (panel_x + panel_w // 2 - coin_surf.get_width() // 2, coin_y - 2))
+
         # Footer hints
         hint = self.small_font.render("[I] Close  [Enter/LClick] Use Item  [RClick] Drop/Remove", True, (150, 150, 150))
-        surface.blit(hint, (panel_x + panel_w // 2 - hint.get_width() // 2, panel_y + panel_h - 25))
+        surface.blit(hint, (panel_x + panel_w // 2 - hint.get_width() // 2, panel_y + panel_h - 20))
 
-    def _draw_inventory_slots(self, surface, inventory, start_x, start_y, slots_per_row=5, highlight_index=None):
+    def _draw_inventory_slots(self, surface, inventory, start_x, start_y, slots_per_row=5, highlight_index=None, hide_coins=False):
         slot_size = 40
         padding = 4
         
         active_items = [(item, count) for item, count in inventory.items.items() if count > 0]
+        if hide_coins:
+            active_items = [(item, count) for item, count in active_items if item != "coins"]
         
         max_y = start_y
         for i, (item, count) in enumerate(active_items):
@@ -1040,20 +1136,21 @@ class UIManager:
                     surface.blit(text_surf, (cx - text_surf.get_width() // 2,
                                              cy - text_surf.get_height() // 2))
 
-    def _draw_combat_tab(self, surface):
+    def _draw_combat_tab(self, surface, crect=None):
         """RS-style combat style selector panel shown above the hotbar."""
-        SLOT = 48
-        N    = 9
-        PAD  = 4
-        total_w = N * SLOT + (N - 1) * PAD
-        panel_w = 240
-        panel_h = 140
-        panel_x = (surface.get_width() - panel_w) // 2
-        panel_y = surface.get_height() - SLOT - 8 - panel_h - 4
+        if crect:
+            panel_x, panel_y, panel_w, panel_h = crect.x, crect.y, crect.w, crect.h
+        else:
+            SLOT = 48
+            N    = 9
+            PAD  = 4
+            total_w = N * SLOT + (N - 1) * PAD
+            panel_w = 240
+            panel_h = 140
+            panel_x = (surface.get_width() - panel_w) // 2
+            panel_y = surface.get_height() - SLOT - 8 - panel_h - 4
 
-        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel.fill((20, 20, 20, 220))
-        surface.blit(panel, (panel_x, panel_y))
+
         pygame.draw.rect(surface, (80, 70, 40), (panel_x, panel_y, panel_w, panel_h), 1)
 
         mode = self.player.combat_mode
@@ -1082,3 +1179,29 @@ class UIManager:
             prefix    = "* " if is_active else "  "
             btn_surf  = self.small_font.render(prefix + label, True, color)
             surface.blit(btn_surf, (panel_x + 12, btn_y + 3))
+
+    def show_dialogue(self, npc_name, lines):
+        self.active_dialogue = {"npc": npc_name, "lines": lines, "line_index": 0}
+
+    def close_dialogue(self):
+        self.active_dialogue = None
+
+    def _draw_dialogue(self, surface):
+        width = 400
+        height = 120
+        x = (surface.get_width() - width) // 2
+        y = surface.get_height() - height - 100
+        rect = pygame.Rect(x, y, width, height)
+        self._draw_textured_rect(surface, rect)
+        
+        npc = self.active_dialogue["npc"]
+        line = self.active_dialogue["lines"][self.active_dialogue["line_index"]]
+        
+        npc_surf = self.font.render(npc, True, (255, 215, 0))
+        surface.blit(npc_surf, (x + width // 2 - npc_surf.get_width() // 2, y + 15))
+        
+        line_surf = self.font.render(line, True, (220, 220, 220))
+        surface.blit(line_surf, (x + 20, y + 50))
+        
+        cont_surf = self.small_font.render("Click or press Space to continue", True, (150, 150, 150))
+        surface.blit(cont_surf, (x + width // 2 - cont_surf.get_width() // 2, y + height - 25))

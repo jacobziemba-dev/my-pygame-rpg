@@ -112,6 +112,57 @@
       "min_level": 1,
       "xp": 20,
       "skill": "fletching"
+    },
+    {
+      "name": "steel_bar",
+      "label": "Steel Bar",
+      "inputs": {"iron_ore": 1, "coal": 2},
+      "outputs": {"steel_bar": 1},
+      "min_level": 20,
+      "xp": 30,
+      "skill": "smithing",
+      "station": "furnace",
+      "duration": 3000
+    },
+    {
+      "name": "steel_sword",
+      "label": "Steel Sword",
+      "inputs": {"steel_bar": 2},
+      "outputs": {"steel_sword": 1},
+      "min_level": 20,
+      "xp": 50,
+      "skill": "smithing",
+      "station": "workbench"
+    },
+    {
+      "name": "steel_axe",
+      "label": "Steel Axe",
+      "inputs": {"steel_bar": 2},
+      "outputs": {"steel_axe": 1},
+      "min_level": 20,
+      "xp": 40,
+      "skill": "smithing",
+      "station": "workbench"
+    },
+    {
+      "name": "steel_pickaxe",
+      "label": "Steel Pickaxe",
+      "inputs": {"steel_bar": 2},
+      "outputs": {"steel_pickaxe": 1},
+      "min_level": 20,
+      "xp": 40,
+      "skill": "smithing",
+      "station": "workbench"
+    },
+    {
+      "name": "steel_armor",
+      "label": "Steel Armor",
+      "inputs": {"steel_bar": 5},
+      "outputs": {"steel_armor": 1},
+      "min_level": 20,
+      "xp": 100,
+      "skill": "smithing",
+      "station": "workbench"
     }
   ]
 }

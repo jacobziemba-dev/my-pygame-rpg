@@ -61,10 +61,17 @@ class GameManager:
         self.respawn_queue = []  # [(respawn_at_ms, enemy_type, spawn_x, spawn_y)]
 
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT, MAP_WIDTH, MAP_HEIGHT)
-        self.ui = UIManager(self.player, self.shop)
+        self.ui = UIManager(self)
         self.action_manager = ActionManager(self.ui, self.camera)
         self.last_tick = pygame.time.get_ticks()
         self._last_frame_ms = 0.0
+        try:
+            # We assume it converts safely after display init
+            self.grass_bg = pygame.image.load(os.path.join("assets", "sprites", "world", "grass.png")).convert()
+            # Scale slightly so pixel art looks bigger if needed, or leave it 1:1
+            # We'll leave it 1:1
+        except:
+            self.grass_bg = None
         self.show_fps_overlay = True  # F3 toggles; issue #10 dev diagnostics
 
         self.running = True
@@ -95,6 +102,11 @@ class GameManager:
             rx = random.randint(50, MAP_WIDTH - 50)
             ry = random.randint(50, MAP_HEIGHT - 50)
             self.resources.append(ResourceNode(rx, ry, "fishing_spot", 25, "rod", "raw_fish", hp=3, respawn_time=20000, min_level=1))
+
+        for _ in range(NUM_COAL_ROCKS):
+            rx = random.randint(50, MAP_WIDTH - 50)
+            ry = random.randint(50, MAP_HEIGHT - 50)
+            self.resources.append(ResourceNode(rx, ry, "coal_rock", 50, "pickaxe", "coal", hp=4, respawn_time=40000, min_level=15))
 
     def _generate_enemies(self):
         for etype, count in [("goblin", NUM_GOBLINS), ("skeleton", NUM_SKELETONS), ("guard", NUM_GUARDS)]:
@@ -173,14 +185,14 @@ class GameManager:
                 return crop
         return None
 
-    def _pathfind_to_entity(self, world_x, world_y, entity=None):
+    def _pathfind_to_entity(self, world_x, world_y, entity=None, action_type="default"):
         obstacles = self._get_solid_obstacles()
         path = find_path(
             (self.player.rect.centerx, self.player.rect.centery),
             (world_x, world_y),
             obstacles
         )
-        self.player.set_target_destination(world_x, world_y, target_entity=entity, waypoints=path or None)
+        self.player.set_target_destination(world_x, world_y, target_entity=entity, waypoints=path or None, action_type=action_type)
 
     def handle_world_click(self, pos, button):
         # Convert screen pos to world pos
@@ -253,6 +265,10 @@ class GameManager:
         elif isinstance(entity, Bank):
             _e = entity
             options.append({
+                "label": "Talk-to Teller",
+                "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e, action_type="talk")
+            })
+            options.append({
                 "label": "Use Bank",
                 "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e)
             })
@@ -262,6 +278,10 @@ class GameManager:
             })
         elif isinstance(entity, Shop):
             _e = entity
+            options.append({
+                "label": "Talk-to Shopkeeper",
+                "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e, action_type="talk")
+            })
             options.append({
                 "label": "Trade Shop",
                 "action": lambda e=_e: self._pathfind_to_entity(e.rect.centerx, e.rect.centery, e)
@@ -286,7 +306,7 @@ class GameManager:
 
     def _show_inventory_context_menu(self, screen_pos, item_index):
         """RS-style right-click menu for an inventory item."""
-        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
+        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
         if not (0 <= item_index < len(active_items)):
             return
         item_name, _ = active_items[item_index]
@@ -370,7 +390,7 @@ class GameManager:
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.MOUSEWHEEL:
-                if self.ui.show_skills:
+                if self.ui.active_tab == "skills":
                     self.ui.scroll_skills(event.y)
             elif event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN):
                 # Context menu: any click dismisses it; left-click executes hovered option
@@ -386,7 +406,7 @@ class GameManager:
 
                 action, index = self.ui.handle_mouse_event(event)
                 if action == "use_item":
-                    active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
+                    active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
                     if 0 <= index < len(active_items):
                         item_name, _ = active_items[index]
                         success, msg = self.player.use_item(item_name)
@@ -435,7 +455,7 @@ class GameManager:
                             self.ui.show_message(f"Sold 1 {item_name.replace('_', ' ')} for {price} coins.")
                 elif action == "right_click_inventory":
                     # Show RS-style context menu for hovered inventory slot
-                    if event.type == pygame.MOUSEBUTTONDOWN and self.ui.show_inventory:
+                    if event.type == pygame.MOUSEBUTTONDOWN and self.ui.active_tab == "inventory":
                         rects = self.ui.get_inventory_slot_rects()
                         for i, rect in enumerate(rects):
                             if rect.collidepoint(event.pos):
@@ -460,8 +480,8 @@ class GameManager:
                         else:
                             self.ui.show_message(result)
                 elif action is None and event.type == pygame.MOUSEBUTTONDOWN:
-                    panels_open = (self.ui.show_inventory or self.ui.show_crafting or
-                                   self.ui.active_bank or self.ui.active_shop or self.ui.show_skills or
+                    panels_open = (self.ui.active_tab or
+                                   self.ui.active_bank or self.ui.active_shop or
                                    getattr(self.ui, 'active_station', None))
                     if not panels_open:
                         if event.button == 1:
@@ -484,13 +504,13 @@ class GameManager:
                     self.ui.context_menu = None
                     continue
 
-                if self.ui.show_skills and event.key == pygame.K_ESCAPE:
-                    self.ui.show_skills = False
+                if self.ui.active_tab == "skills" and event.key == pygame.K_ESCAPE:
+                    self.ui.active_tab = None
                     continue
                 
-                if self.ui.show_inventory:
+                if self.ui.active_tab == "inventory":
                     self._handle_inventory_input(event)
-                elif self.ui.show_crafting:
+                elif self.ui.active_tab == "crafting":
                     self._handle_crafting_input(event)
                 elif self.ui.active_bank:
                     self._handle_bank_input(event)
@@ -503,7 +523,7 @@ class GameManager:
 
     def _handle_crafting_input(self, event):
         if event.key == pygame.K_ESCAPE or event.key == pygame.K_c:
-            self.ui.show_crafting = False
+            self.ui.active_tab = None
         else:
             recipes = self.recipe_manager.get_handcrafted()
             if event.key == pygame.K_UP:
@@ -523,10 +543,10 @@ class GameManager:
                         self.ui.show_message(result)
 
     def _handle_inventory_input(self, event):
-        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
+        active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0 and item != "coins"]
         
         if event.key == pygame.K_ESCAPE or event.key == pygame.K_i:
-            self.ui.show_inventory = False
+            self.ui.active_tab = None
         elif event.key == pygame.K_UP:
             self.ui.inventory_index = max(0, self.ui.inventory_index - 6)
         elif event.key == pygame.K_DOWN:
@@ -597,6 +617,13 @@ class GameManager:
                     self.ui.show_message(f"Started processing {output_item}...")
             
     def _handle_main_input(self, event):
+        if getattr(self.ui, 'active_dialogue', None):
+            if event.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_ESCAPE):
+                self.ui.active_dialogue["line_index"] += 1
+                if self.ui.active_dialogue["line_index"] >= len(self.ui.active_dialogue["lines"]):
+                    self.ui.close_dialogue()
+            return
+
         # Hotbar slots 1–9
         if event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4,
                          pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9):
@@ -854,7 +881,7 @@ class GameManager:
         
         if self.player.hp > 0:
             obstacles = self._get_solid_obstacles()
-            if not self.ui.show_crafting:
+            if self.ui.active_tab != "crafting":
                 self.player.update(dt, obstacles)
             
             for crop in self.crops:
@@ -974,8 +1001,22 @@ class GameManager:
 
     def draw(self):
         self.screen.fill((0, 0, 0))
-        # Draw Map background 
-        pygame.draw.rect(self.screen, (20, 50, 20), self.camera.apply(pygame.Rect(0, 0, 2400, 2400))) 
+        # Draw Map background
+        map_rect = self.camera.apply(pygame.Rect(0, 0, 2400, 2400))
+        if getattr(self, 'grass_bg', None):
+            cam_x = self.camera.camera_rect.x
+            cam_y = self.camera.camera_rect.y
+            gw, gh = self.grass_bg.get_size()
+            start_x = - (cam_x % gw)
+            start_y = - (cam_y % gh)
+            
+            self.screen.set_clip(map_rect)
+            for x in range(int(start_x) - gw, self.screen.get_width() + gw, gw):
+                for y in range(int(start_y) - gh, self.screen.get_height() + gh, gh):
+                    self.screen.blit(self.grass_bg, (x, y))
+            self.screen.set_clip(None)
+        else:
+            pygame.draw.rect(self.screen, (20, 50, 20), map_rect)
         # Draw ground-level objects first (no Y-sort needed)
         for item in self.resources:
             item.draw(self.screen, self.camera)
