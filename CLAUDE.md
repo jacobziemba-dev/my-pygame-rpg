@@ -26,8 +26,8 @@ This game is a **top-down 2D RPG built with pygame-ce**, designed to feel and pl
 ### What "RuneScape feel" means for this project
 
 - **Right-click context menus everywhere**: Right-clicking any entity in the world shows a RS-style dropdown with verb-colored options ("Attack Goblin", "Chop Tree", "Walk here"). This is already implemented and must be maintained for all new entities.
-- **Click-to-move as the primary input**: The player navigates by clicking on the world. WASD is a fallback only. Pathfinding (A*) is already implemented. New movement or interaction features should always default to mouse-driven.
-- **Tick-based combat**: Attacks fire on a 1000ms tick, not in real time. No button mashing. The player clicks an enemy and watches the numbers roll. This pacing is intentional and RS-authentic.
+- **Click-to-move as the primary input**: The player navigates by clicking on the world. WASD movement has been removed to enforce this. Pathfinding (A*) is already implemented. New movement or interaction features should always default to mouse-driven.
+- **Tick-based combat**: Attacks fire on a 600ms tick, not in real time. No button mashing. The player clicks an enemy and watches the numbers roll. This pacing is intentional and RS-authentic.
 - **Miss/splash system**: Attacks can miss based on accuracy vs enemy defense. Low-level players vs high-level enemies should miss often. Blue "0" splats on miss, red numbers on hit — exactly like OSRS.
 - **Auto-retaliate**: When an enemy hits the player and the player is idle, automatically fight back. This is the RS default and must always be on.
 - **Skill grinding**: Players gain XP by doing repetitive actions (chop trees, mine rocks, fight enemies, cook food, smith bars). Levels gate higher-tier content. The grind *is* the game — do not short-circuit it.
@@ -77,7 +77,6 @@ Requires `pygame-ce>=2.5.0`. No test suite — all testing is manual by running 
 | Right-click world  | RS-style context menu ("Chop Tree", "Attack Enemy", etc.)   |
 | Right-click inv    | Context menu: Use/Equip, Drop, Examine, Remove (equipped)   |
 | ESC                | Close context menu / close open panels                      |
-| WASD / Arrow Keys  | Move player (fallback — cancels click-to-move)              |
 | E                  | Interact with nearby object                                 |
 | C                  | Open hand-crafting menu                                     |
 | I                  | Open inventory                                              |
@@ -115,11 +114,11 @@ while running:
 
 All drawable objects extend `Entity` (base class with sprite/animation support).
 
-- **player.py** — Click-to-move with waypoint navigation, keyboard fallback, inventory, skills, HP, equipment, attack/defense. `combat_mode` ("melee"/"ranged") and `combat_style` drive XP routing. `set_combat_mode()`, `set_combat_style()`, `get_xp_skill_for_hit()` are the key methods. `has_bow()` remains a utility check.
+- **player.py** — Click-to-move with waypoint navigation, inventory, skills, HP, equipment, attack/defense. `combat_mode` ("melee"/"ranged") and `combat_style` drive XP routing. `set_combat_mode()`, `set_combat_style()`, `get_xp_skill_for_hit()` are the key methods. `has_bow()` remains a utility check.
 - **enemy.py** — Three typed enemies (goblin/skeleton/guard). Each has `name`, `combat_level`, `hp`, `defense_level`, `max_hit`, `speed`, `aggro_range`, `drops`, `respawn_time`, `xp_reward`, `spawn_x/y`. HP bar appears only after first hit. Name + "(lvl X)" label always visible above sprite.
 - **resource_node.py** — Gatherable world objects (trees, rocks, iron_rock, bushes, fishing_spots). Each has: HP (hits to deplete), tool requirement, drop yield, respawn timer, min skill level. Depleted nodes are passable.
 - **resource_item.py** — Items dropped on the ground (from enemies or player drop). Auto-collected on click or nearby walk.
-- **projectile.py** — Arrow projectiles spawned every 1000ms tick when `player.combat_mode == "ranged"` and a bow is equipped. Travels to target, applies damage + XP (routed via `get_xp_skill_for_hit()`) on collision.
+- **projectile.py** — Arrow projectiles spawned every 600ms tick when `player.combat_mode == "ranged"` and a bow is equipped. Travels to target, applies damage + XP (routed via `get_xp_skill_for_hit()`) on collision.
 - **bank.py** — Static 2×2 tile bank near spawn. Opening it shows the bank UI (deposit/withdraw).
 - **shop.py** — Static 2×2 tile general store near spawn. Supports fixed-price buy/sell trading via the shop UI.
 - **station.py** — Furnace, Workbench, Stove. Each station processes recipes with a timer. Stores `pending_recipe` so XP is awarded when the player collects output.
@@ -130,7 +129,7 @@ All drawable objects extend `Entity` (base class with sprite/animation support).
 - **inventory.py** — Item quantity tracking (dict of item_name → count). `add_item`, `remove_item`, `craft` (validates level + materials).
 - **recipe_manager.py** — Loads `data/recipes.json`. Provides `get_handcrafted()`, `get_for_station(type)`, `get_all()`.
 - **skill_manager.py** — 30+ skills in four categories: Combat, Gathering, Artisan, Support. XP threshold per level = `level² × 30` (quadratic — feels like a proper grind). `gain_xp(skill_name, amount)` returns True on level-up. Handles legacy key migration.
-- **action_manager.py** — Processes the 1000ms gathering tick. Calculates success chance from tool power + skill level vs node difficulty. Awards **25 XP** per successful gather. Shows miss/fail messages.
+- **action_manager.py** — Processes the 600ms gathering tick. Calculates success chance from tool power + skill level vs node difficulty. Awards **25 XP** per successful gather. Shows miss/fail messages.
 - **save_manager.py** — Full world persistence to `data/save.json`: player state, inventory, bank, skills, resource nodes (with respawn timers), enemies, crops, station queues.
 - **pathfinder.py** — A* on a 75×75 tile grid. Called on every left-click. Returns smoothed world-space waypoints. If destination is inside a solid tile, BFS finds nearest walkable neighbor. Bresenham line-of-sight used for path smoothing.
 
@@ -140,16 +139,17 @@ Single `UIManager` class. Renders all HUD and menus. Key features:
 
 - **HP bar** (green/red) bottom-left with HP text above it
 - **Combat stats** line above HP bar (ATK, STR, CON levels + calculated hit/def values)
-- **Skills panel** (K) — scrollable list, skills grouped by category, each showing level + XP/threshold text + **gold XP progress bar**
-- **Inventory panel** (I) — 6-column grid of item slots with icons and stack counts; equipped gear section below
-- **Crafting menu** (C) — hand-crafted recipes only; shows correct skill level requirement per recipe
-- **Bank UI** — dual-pane (player inventory left, bank right); left-click to deposit/withdraw; T to deposit all
-- **Shop UI** — dual-pane (shop stock left, player inventory right); left-click to buy/sell one item with coin checks and stock updates
-- **Station menu** — shown when interacting with furnace/workbench/stove; checks the recipe's actual skill level
-- **Hit splats** — floating damage numbers over enemies; red for hits, blue "0" for misses (RS splash); fade and drift upward over 800ms. `add_hit_splat(damage, wx, wy, camera, is_miss=False)`
-- **Message bar** — centered yellow text at top for action feedback (3-second duration)
-- **Hotbar** — 9 slots bottom-center (48×48px each). Slots hold style shortcuts, `"toggle_combat"`, or item names. Activated by 1–9 keys. Slot 1=TGL, 2=ACC, 3=AGG, 4=DEF, 5=RAP, 6=LNG by default; slots 7–9 empty.
-- **Combat tab** (`Tab`) — small overlay above hotbar showing current mode and style selector with XP hints per style. `[M]` toggles melee/ranged mode.
+- **Sidebar Panels** — persistently drawn in the bottom-right corner, driven by an `active_tab` state.
+  - **Skills panel** (K) — scrollable list, skills grouped by category, each showing level + XP/threshold text + gold XP progress bar.
+  - **Inventory panel** (I) — 5-column grid of item slots with icons and stack counts; equipped gear section below.
+  - **Crafting menu** (C) — hand-crafted recipes only; shows correct skill level requirement per recipe.
+  - **Combat tab** (Tab) — small panel showing current mode and style selector with XP hints per style. `[M]` toggles melee/ranged mode.
+- **Bank UI** — Center screen UI, dual-pane (player inventory left, bank right); left-click to deposit/withdraw; T to deposit all
+- **Shop UI** — Center screen UI, dual-pane (shop stock left, player inventory right); left-click to buy/sell one item with coin checks and stock updates
+- **Station menu** — Center screen UI, shown when interacting with furnace/workbench/stove; checks the recipe's actual skill level
+- **Hit splats** — floating damage numbers over enemies; red for hits, blue "0" for misses (RS splash); fade and drift upward over 800ms.
+- **Chatbox Messages** — localized log at the bottom-left of the screen for action feedback. Stores recent messages and fades them after 10 seconds.
+- **Hotbar** — 9 slots bottom-center (48×48px each). Slots hold style shortcuts, `"toggle_combat"`, or item names. Activated by 1–9 keys.
 - **Control hints** — bottom-right corner key reminders
 - **Right-click context menu** — RS-style popup on right-click anywhere in the world. Shows verb-colored options (gold verb + white target, e.g. "Chop Tree", "Attack Enemy", "Walk here"). Left-click an option to execute; click elsewhere or press ESC to dismiss. Also shown on right-click of inventory items ("Use", "Drop", "Examine"). Rendered by `UIManager`: `show_context_menu(pos, options)`, `handle_context_menu_click(pos)`, `_draw_context_menu(surface)`.
 
@@ -216,8 +216,8 @@ Single `UIManager` class. Renders all HUD and menus. Key features:
 
 ## Combat System
 
-- **Melee**: 1000ms auto-attack tick when `player.current_action == "attacking"` and combat falls to the melee branch. Uses `player.rect.inflate(80, 80)` (~56px reach) to check contact. Damage = `player.get_attack()`. All hits go through `_roll_hit()` for miss chance. XP routed via `player.get_xp_skill_for_hit()`.
-- **Ranged**: Fires when `player.combat_mode == "ranged"` **AND** `player.has_bow()`. Spawns a `Projectile` toward target every 1000ms within `RANGED_ATTACK_RANGE = 250px`. Requires arrows in inventory. Miss checked on projectile impact via `_roll_hit()`.
+- **Melee**: 600ms auto-attack tick when `player.current_action == "attacking"` and combat falls to the melee branch. Uses `player.rect.inflate(80, 80)` (~56px reach) to check contact. Damage = `player.get_attack()`. All hits go through `_roll_hit()` for miss chance. XP routed via `player.get_xp_skill_for_hit()`.
+- **Ranged**: Fires when `player.combat_mode == "ranged"` **AND** `player.has_bow()`. Spawns a `Projectile` toward target every 600ms within `RANGED_ATTACK_RANGE = 250px`. Requires arrows in inventory. Miss checked on projectile impact via `_roll_hit()`.
 - **Miss mechanic**: `GameManager._roll_hit(base_damage, enemy)` → `(damage, is_hit)`. Hit chance = `clamp(0.50 + (attack_level − enemy.defense_level) × 0.025, 0.10, 0.95)`. Misses show a blue "0" hit splat (`add_hit_splat(..., is_miss=True)`).
 - **Combat branching**: Ranged requires BOTH `combat_mode == "ranged"` and `has_bow()`. If either is false, combat falls through to melee. Equipping a shortbow auto-sets `combat_mode = "ranged"`. Loading a save with shortbow equipped auto-detects ranged mode for backwards compatibility.
 - **Out-of-range chasing**: If enemy is out of melee or ranged reach during the tick, the player's `target_destination` is updated directly (without calling `set_target_destination`) so `current_action` stays `"attacking"` and the player chases the enemy without losing attack state.
@@ -248,8 +248,8 @@ Item icons: `assets/sprites/{item_name}.png` (32×32). The UI falls back to a 2-
 ## Key Design Patterns
 
 - **Manager pattern**: `GameManager` creates and holds all systems. Systems receive what they need as arguments — they do not reference each other directly.
-- **Action ticking**: Gathering and combat actions process once per 1000ms tick inside `GameManager.update()`. This is independent of the 60 FPS render loop.
-- **Combat branching**: The 1000ms tick checks `combat_mode == "ranged" and has_bow()` for ranged (spawns Projectile), else melee (inflate(80,80) collision). XP always flows through `player.get_xp_skill_for_hit()`. Out-of-range: directly set `player.target_destination` (not `set_target_destination`) to chase without clearing `current_action`.
+- **Action ticking**: Gathering and combat actions process once per 600ms tick inside `GameManager.update()`. This is independent of the 60 FPS render loop.
+- **Combat branching**: The 600ms tick checks `combat_mode == "ranged" and has_bow()` for ranged (spawns Projectile), else melee (inflate(80,80) collision). XP always flows through `player.get_xp_skill_for_hit()`. Out-of-range: directly set `player.target_destination` (not `set_target_destination`) to chase without clearing `current_action`.
 - **Data-driven crafting**: All recipes live in `recipes.json`. Add `"skill"` to route XP to the correct skill. Add `"station"` to require a workstation. No code changes needed for new recipes.
 - **Skill-level checks**: Both the UI (display) and the game logic (crafting, gathering) check `recipe.get("skill", "crafting")` to get the right skill level. Do not hardcode `crafting.level` for smithing/cooking/fletching recipes.
 - **Equipment/tool requirements**: Wield requirements are centralized in `EQUIPMENT_REQUIREMENTS` in `settings.py` (currently iron_sword/iron_axe/iron_pickaxe Attack 5, iron_armor Defense 10). Enforce these gates through item use/equip flows.

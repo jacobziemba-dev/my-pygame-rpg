@@ -609,21 +609,12 @@ class GameManager:
         elif event.key == pygame.K_SPACE:
             self._attack()
         elif event.key == pygame.K_c:
-            self.ui.show_crafting = True
-            self.ui.show_skills = False
-            self.ui.show_inventory = False
+            self.ui.toggle_tab("crafting")
             self.ui.crafting_index = 0
         elif event.key == pygame.K_k:
-            self.ui.show_skills = not self.ui.show_skills
-            if self.ui.show_skills:
-                self.ui.reset_skills_scroll()
-                self.ui.show_crafting = False
-                self.ui.show_inventory = False
+            self.ui.toggle_tab("skills")
         elif event.key == pygame.K_i:
-            self.ui.show_inventory = not self.ui.show_inventory
-            if self.ui.show_inventory:
-                self.ui.show_crafting = False
-                self.ui.show_skills = False
+            self.ui.toggle_tab("inventory")
         elif event.key == pygame.K_RETURN:
             # Use/Equip first viable item (simple priority)
             for item in ["bread", "iron_armor", "iron_sword", "sword"]:
@@ -633,7 +624,7 @@ class GameManager:
                     return
             self.ui.show_message("No usable item in inventory.")
         elif event.key == pygame.K_TAB:
-            self.ui.show_combat_tab = not self.ui.show_combat_tab
+            self.ui.toggle_tab("combat")
         elif event.key == pygame.K_m:
             new_mode = "ranged" if self.player.combat_mode == "melee" else "melee"
             self.player.set_combat_mode(new_mode)
@@ -872,9 +863,9 @@ class GameManager:
             for station in self.stations:
                 station.update()
             
-            # Action Manager Ticks (once per 1000ms)
+            # Action Manager Ticks (once per 600ms)
             current_time = pygame.time.get_ticks()
-            if current_time - self.last_tick >= 1000:
+            if current_time - self.last_tick >= 600:
                 self.last_tick = current_time
                 if self.player.current_action == "gathering" and self.player.action_target:
                     self.action_manager.process_gathering_tick(self.player, self.player.action_target)

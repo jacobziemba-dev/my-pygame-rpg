@@ -222,32 +222,7 @@ class Player(Entity):
                         self.interaction_target = None
                     
 
-        # Keyboard fallback
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_w] or keys[pygame.K_UP]:
-            self.direction.y = -1
-            self.rect.y -= self.speed * dt * 60
-            resolve_collision_y(self.rect, obstacles)
-            moved = True
-            self.target_destination = None
-        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
-            self.direction.y = 1
-            self.rect.y += self.speed * dt * 60
-            resolve_collision_y(self.rect, obstacles)
-            moved = True
-            self.target_destination = None
-        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
-            self.direction.x = -1
-            self.rect.x -= self.speed * dt * 60
-            resolve_collision_x(self.rect, obstacles)
-            moved = True
-            self.target_destination = None
-        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-            self.direction.x = 1
-            self.rect.x += self.speed * dt * 60
-            resolve_collision_x(self.rect, obstacles)
-            moved = True
-            self.target_destination = None
+        # Keyboard fallback removed (forced click-to-move for RS feel)
             
         if moved and self.current_action is not None and not self.target_destination:
             self.current_action = None
@@ -266,12 +241,19 @@ class Player(Entity):
 
         super().draw(surface, camera)
 
-        # Draw movement target indicator
+        # Draw movement target indicator (RS-style yellow X)
         if self.target_destination:
-            target_rect = pygame.Rect(self.target_destination[0] - 5, self.target_destination[1] - 5, 10, 10)
+            tx = self.target_destination[0]
+            ty = self.target_destination[1]
             if camera:
-                target_rect = camera.apply(target_rect)
-            pygame.draw.circle(surface, (200, 200, 200, 100), target_rect.center, 6, 2)
+                tx -= camera.camera_rect.x
+                ty -= camera.camera_rect.y
+            
+            x_color = (255, 230, 0, 180)
+            length = 6
+            # Draw an X
+            pygame.draw.line(surface, x_color, (tx - length, ty - length), (tx + length, ty + length), 3)
+            pygame.draw.line(surface, x_color, (tx - length, ty + length), (tx + length, ty - length), 3)
 
 
     def take_damage(self, amount):

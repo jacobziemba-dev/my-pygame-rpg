@@ -13,12 +13,9 @@ class UIManager:
         self.small_font = pygame.font.SysFont(None, 18)
         self.large_font = pygame.font.SysFont(None, 32)
         
-        self.message = ""
-        self.message_timer = 0
-        self.message_duration = 3000 # 3 seconds in ms
-        self.show_inventory = False
-        self.show_skills = False
-        self.show_crafting = False
+        self.messages = []
+        self.active_tab = "inventory" # "inventory", "skills", "combat", "crafting", None
+        self.sidebar_rect = pygame.Rect(SCREEN_WIDTH - 300, SCREEN_HEIGHT - 440, 300, 440)
         self.crafting_index = 0
         self.inventory_index = 0
         self.bank_index = 0
@@ -50,7 +47,6 @@ class UIManager:
             "longrange",      # 6
             None, None, None, # 7-9 (assignable)
         ]
-        self.show_combat_tab = False
 
         # RS-style right-click context menu
         # {"pos": (x, y), "options": [{"label": str, "action": callable}]}
@@ -223,9 +219,16 @@ class UIManager:
         text = f"+{int(amount)} {skill_name.capitalize()}"
         self.xp_drops.append([text, screen_x, screen_y, pygame.time.get_ticks(), (255, 220, 80)])
 
-    def show_message(self, text):
-        self.message = text
-        self.message_timer = pygame.time.get_ticks()
+    def show_message(self, text, color=(255, 255, 0)):
+        self.messages.append({"text": text, "time": pygame.time.get_ticks(), "color": color})
+        if len(self.messages) > 6:
+            self.messages.pop(0)
+
+    def toggle_tab(self, tab_name):
+        if self.active_tab == tab_name:
+            self.active_tab = None
+        else:
+            self.active_tab = tab_name
 
     def reset_skills_scroll(self):
         self.skills_scroll_y = 0
@@ -318,39 +321,82 @@ class UIManager:
             surface.blit(drop_surf, (x, y))
 
         # Draw overlays
-        if self.show_inventory:
-            self._draw_inventory_panel(surface)
-        if self.show_skills:
-            self._draw_skills_panel(surface)
-        if self.show_crafting:
-            self._draw_crafting_menu(surface)
         if self.active_bank:
             self._draw_bank_inventory(surface)
         if self.active_shop:
             self._draw_shop_inventory(surface)
-        if self.active_station:
+        if getattr(self, 'active_station', None):
             self._draw_station_menu(surface)
 
         self._draw_hotbar(surface)
-        if self.show_combat_tab:
-            self._draw_combat_tab(surface)
+
+        # Draw Sidebar
+        self._draw_sidebar(surface)
 
         # Context menu draws on top of everything
         self._draw_context_menu(surface)
 
-        # Draw Message
-        if self.message:
-            msg_surf = self.large_font.render(self.message, True, (255, 255, 0))
-            msg_rect = msg_surf.get_rect(center=(surface.get_width() // 2, 50))
-            surface.blit(msg_surf, msg_rect)
+        # Draw Chatbox Messages
+        chat_x, chat_y = 10, surface.get_height() - 150
+        pygame.draw.rect(surface, (20, 20, 20, 180), (chat_x, chat_y, 400, 140))
+        pygame.draw.rect(surface, (80, 80, 80), (chat_x, chat_y, 400, 140), 2)
+        
+        y_offset = chat_y + 10
+        now = pygame.time.get_ticks()
+        # Keep messages for 10 seconds in chatbox
+        valid_msgs = [m for m in self.messages if now - m["time"] < 10000]
+        for m in valid_msgs[-6:]:
+            msg_surf = self.small_font.render(m["text"], True, m["color"])
+            surface.blit(msg_surf, (chat_x + 10, y_offset))
+            y_offset += 20
+
+
+    def _draw_sidebar(self, surface):
+        panel_w, panel_h = 300, 440
+        panel_x = surface.get_width() - panel_w
+        panel_y = surface.get_height() - panel_h
+
+        # Background
+        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        bg.fill((45, 35, 25, 240))
+        surface.blit(bg, (panel_x, panel_y))
+        pygame.draw.rect(surface, (80, 60, 40), (panel_x, panel_y, panel_w, panel_h), 2)
+
+        # Tabs
+        tabs = [("inventory", "Inv"), ("skills", "Skl"), ("combat", "Cbt"), ("crafting", "Crf")]
+        tab_w = panel_w // len(tabs)
+        tab_h = 30
+
+        for i, (tab_id, label) in enumerate(tabs):
+            tx = panel_x + i * tab_w
+            ty = panel_y
+            color = (100, 80, 50) if self.active_tab == tab_id else (60, 45, 30)
+            pygame.draw.rect(surface, color, (tx, ty, tab_w, tab_h))
+            pygame.draw.rect(surface, (120, 90, 60), (tx, ty, tab_w, tab_h), 1)
+            
+            text_color = (255, 215, 0) if self.active_tab == tab_id else (180, 180, 180)
+            lbl_surf = self.font.render(label, True, text_color)
+            surface.blit(lbl_surf, (tx + tab_w//2 - lbl_surf.get_width()//2, ty + 6))
+
+        # Content rect
+        crect = pygame.Rect(panel_x, panel_y + tab_h, panel_w, panel_h - tab_h)
+
+        if self.active_tab == "inventory":
+            self._draw_inventory_panel(surface, crect)
+        elif self.active_tab == "skills":
+            self._draw_skills_panel(surface, crect)
+        elif self.active_tab == "crafting":
+            self._draw_crafting_menu(surface, crect)
+        elif self.active_tab == "combat":
+            self._draw_combat_tab(surface, crect)
 
     def get_inventory_slot_rects(self):
         rects = []
-        panel_w, panel_h = 320, 400
-        panel_x = (SCREEN_WIDTH - panel_w) // 2
-        panel_y = (SCREEN_HEIGHT - panel_h) // 2
-        start_x = panel_x + 20
-        start_y = panel_y + 70
+        panel_w, panel_h = 300, 440
+        panel_x = SCREEN_WIDTH - panel_w
+        panel_y = SCREEN_HEIGHT - panel_h + 30
+        start_x = panel_x + 10
+        start_y = panel_y + 40
         slots_per_row = 6
         slot_size = 40
         padding = 4
@@ -431,12 +477,12 @@ class UIManager:
 
     def get_equipped_slot_rects(self):
         rects = []
-        panel_w, panel_h = 320, 400
-        panel_x = (SCREEN_WIDTH - panel_w) // 2
-        panel_y = (SCREEN_HEIGHT - panel_h) // 2
-        gear_y = panel_y + 255
-        start_x = panel_x + 20
-        start_y = gear_y + 40
+        panel_w, panel_h = 300, 440
+        panel_x = SCREEN_WIDTH - panel_w
+        panel_y = SCREEN_HEIGHT - panel_h + 30
+        gear_y = panel_y + 230
+        start_x = panel_x + 10
+        start_y = gear_y + 30
         slots_per_row = 6
         slot_size = 40
         padding = 4
@@ -451,10 +497,10 @@ class UIManager:
 
     def get_crafting_recipe_rects(self):
         rects = []
-        panel_w, panel_h = 400, 300
-        panel_x = (SCREEN_WIDTH - panel_w) // 2
-        panel_y = (SCREEN_HEIGHT - panel_h) // 2
-        list_top = panel_y + 54
+        panel_w, panel_h = 300, 440
+        panel_x = SCREEN_WIDTH - panel_w
+        panel_y = SCREEN_HEIGHT - panel_h + 30
+        list_top = panel_y + 40
         
         for i, recipe in enumerate(self.recipe_manager.get_all()):
             row_y = list_top + i * 22
@@ -464,7 +510,19 @@ class UIManager:
         return rects
 
     def handle_mouse_event(self, event):
-        if not (self.show_inventory or self.show_crafting or self.active_bank or self.active_shop):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            panel_w, panel_h = 300, 440
+            panel_x = SCREEN_WIDTH - panel_w
+            panel_y = SCREEN_HEIGHT - panel_h
+            if panel_x <= event.pos[0] <= panel_x + panel_w and panel_y <= event.pos[1] <= panel_y + 30:
+                # Clicked a tab
+                idx = (event.pos[0] - panel_x) // (panel_w // 4)
+                tabs = ["inventory", "skills", "combat", "crafting"]
+                if 0 <= idx < 4:
+                    self.toggle_tab(tabs[idx])
+                return "tab_clicked", -1
+
+        if not (self.active_tab or getattr(self, 'active_bank', False) or getattr(self, 'active_shop', False)):
             return None, None
 
         if event.type == pygame.MOUSEMOTION:
@@ -490,13 +548,13 @@ class UIManager:
                     if rect.collidepoint(event.pos):
                         self.inventory_index = i
                         return None, None
-            elif self.show_inventory:
+            elif self.active_tab == 'inventory':
                 rects = self.get_inventory_slot_rects()
                 for i, rect in enumerate(rects):
                     if rect.collidepoint(event.pos):
                         self.inventory_index = i
                         break
-            elif self.show_crafting:
+            elif self.active_tab == 'crafting':
                 rects = self.get_crafting_recipe_rects()
                 for i, rect in enumerate(rects):
                     if rect.collidepoint(event.pos):
@@ -522,13 +580,13 @@ class UIManager:
                     for i, rect in enumerate(sell_rects):
                         if rect.collidepoint(event.pos):
                             return "shop_sell_item", i
-                elif self.show_inventory:
+                elif self.active_tab == 'inventory':
                     rects = self.get_inventory_slot_rects()
                     for i, rect in enumerate(rects):
                         if rect.collidepoint(event.pos):
                             self.inventory_index = i
                             return "use_item", i
-                elif self.show_crafting:
+                elif self.active_tab == 'crafting':
                     rects = self.get_crafting_recipe_rects()
                     for i, rect in enumerate(rects):
                         if rect.collidepoint(event.pos):
@@ -557,7 +615,7 @@ class UIManager:
         recipes = self.recipe_manager.get_for_station(self.active_station.station_type)
 
         # Recipe list
-        list_top = panel_y + 54
+        list_top = panel_y + 40
         for i, recipe in enumerate(recipes):
             row_y = list_top + i * 22
             if row_y > panel_y + panel_h - 86:
@@ -585,10 +643,13 @@ class UIManager:
             surface.blit(self.font.render(f"In:  {inputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 70))
             surface.blit(self.font.render(f"Out: {outputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 48))
 
-    def _draw_crafting_menu(self, surface):
-        panel_w, panel_h = 400, 300
-        panel_x = (surface.get_width() - panel_w) // 2
-        panel_y = (surface.get_height() - panel_h) // 2
+    def _draw_crafting_menu(self, surface, crect=None):
+        if crect:
+            panel_x, panel_y, panel_w, panel_h = crect.x, crect.y, crect.w, crect.h
+        else:
+            panel_w, panel_h = 400, 300
+            panel_x = (surface.get_width() - panel_w) // 2
+            panel_y = (surface.get_height() - panel_h) // 2
 
         panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         panel.fill((20, 20, 20, 220))
@@ -605,7 +666,7 @@ class UIManager:
         recipes = self.recipe_manager.get_handcrafted()
 
         # Recipe list
-        list_top = panel_y + 54
+        list_top = panel_y + 40
         for i, recipe in enumerate(recipes):
             row_y = list_top + i * 22
             if row_y > panel_y + panel_h - 86:
@@ -643,11 +704,14 @@ class UIManager:
             surface.blit(self.font.render(f"Out: {outputs_str}", True, (200, 200, 200)), (panel_x + 10, panel_y + panel_h - 48))
             surface.blit(self.font.render(f"XP:  +{r['xp']} {r_skill}", True, (160, 210, 160)), (panel_x + 10, panel_y + panel_h - 26))
 
-    def _draw_skills_panel(self, surface):
-        panel_w = 320
-        panel_h = min(440, surface.get_height() - 20)
-        panel_x = surface.get_width() - panel_w - 10
-        panel_y = 10
+    def _draw_skills_panel(self, surface, crect=None):
+        if crect:
+            panel_x, panel_y, panel_w, panel_h = crect.x, crect.y, crect.w, crect.h
+        else:
+            panel_w = 320
+            panel_h = min(440, surface.get_height() - 20)
+            panel_x = surface.get_width() - panel_w - 10
+            panel_y = 10
 
         panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         panel.fill((0, 0, 0, 200))
@@ -719,10 +783,13 @@ class UIManager:
         hint = self.font.render("[ESC] Close   [T] Deposit All  [LClick] Deposit/Withdraw 1", True, (150, 150, 150))
         surface.blit(hint, (panel_x + 20, panel_y + panel_h - 30))
 
-    def _draw_inventory_panel(self, surface):
-        panel_w, panel_h = 320, 400
-        panel_x = (surface.get_width() - panel_w) // 2
-        panel_y = (surface.get_height() - panel_h) // 2
+    def _draw_inventory_panel(self, surface, crect=None):
+        if crect:
+            panel_x, panel_y, panel_w, panel_h = crect.x, crect.y, crect.w, crect.h
+        else:
+            panel_w, panel_h = 320, 400
+            panel_x = (surface.get_width() - panel_w) // 2
+            panel_y = (surface.get_height() - panel_h) // 2
 
         # Draw Background Panel
         panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
@@ -731,16 +798,16 @@ class UIManager:
         pygame.draw.rect(surface, (100, 100, 100), (panel_x, panel_y, panel_w, panel_h), 2)
 
         # Header
-        title = self.large_font.render("Inventory", True, (255, 215, 0))
+        title = self.font.render("Inventory", True, (255, 215, 0))
         surface.blit(title, (panel_x + panel_w // 2 - title.get_width() // 2, panel_y + 15))
-        pygame.draw.line(surface, (70, 70, 70), (panel_x + 20, panel_y + 55), (panel_x + panel_w - 20, panel_y + 55), 2)
+        pygame.draw.line(surface, (70, 70, 70), (panel_x + 10, panel_y + 30), (panel_x + panel_w - 10, panel_y + 30), 2)
 
         # Inventory Section
         active_items = [(item, count) for item, count in self.player.inventory.items.items() if count > 0]
         if self.inventory_index >= len(active_items) and len(active_items) > 0:
             self.inventory_index = len(active_items) - 1
             
-        self._draw_inventory_slots(surface, self.player.inventory, panel_x + 20, panel_y + 70, slots_per_row=6, highlight_index=self.inventory_index)
+        self._draw_inventory_slots(surface, self.player.inventory, panel_x + 10, panel_y + 40, slots_per_row=5, highlight_index=self.inventory_index)
 
         # Show selected item name (Detail section)
         if 0 <= self.inventory_index < len(active_items):
@@ -756,13 +823,13 @@ class UIManager:
             surface.blit(name_surf, (panel_x + panel_w // 2 - name_surf.get_width() // 2, detail_y + 10))
 
         # Gear Section
-        gear_y = panel_y + 255
+        gear_y = panel_y + 230
         pygame.draw.line(surface, (70, 70, 70), (panel_x + 20, gear_y), (panel_x + panel_w - 20, gear_y), 2)
         gear_title = self.font.render("Equipped Gear", True, (255, 215, 0))
         surface.blit(gear_title, (panel_x + 20, gear_y + 10))
         
         if self.player.equipped_items:
-            self._draw_equipped_slots(surface, self.player.equipped_items, panel_x + 20, gear_y + 40, slots_per_row=6)
+            self._draw_equipped_slots(surface, self.player.equipped_items, panel_x + 10, gear_y + 30, slots_per_row=5)
         else:
             none_surf = self.font.render("None", True, (100, 100, 100))
             surface.blit(none_surf, (panel_x + 30, gear_y + 40))
