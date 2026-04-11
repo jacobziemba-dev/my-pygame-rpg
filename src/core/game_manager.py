@@ -1328,7 +1328,7 @@ class GameManager:
             # Nodes updates (respawn ticks)
             for item in self.resources:
                 if isinstance(item, ResourceNode):
-                    item.update()
+                    item.update(dt)
 
             for enemy in self.enemies[:]:
                 enemy.update(self.player, dt, obstacles + [self.player.rect])
