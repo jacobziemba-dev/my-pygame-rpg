@@ -136,6 +136,11 @@ class Player(Entity):
     def _cardinal_suffix_from_vector(self, vx, vy):
         if vx == 0 and vy == 0:
             return self.facing
+        # Diagonal movement: dominant-axis pick maps equal |vx|==|vy| to vertical (walk_down),
+        # but side-view sprites rotated for _down read as facing the wrong horizontal way.
+        # Prefer left/right whenever both axes matter so e.g. down-left uses walk_left.
+        if vx != 0 and vy != 0:
+            return "_right" if vx > 0 else "_left"
         if abs(vx) > abs(vy):
             return "_right" if vx > 0 else "_left"
         return "_down" if vy > 0 else "_up"
@@ -197,7 +202,7 @@ class Player(Entity):
             if dx != 0 or dy != 0:
                 suf = self._cardinal_suffix_from_vector(dx, dy)
             self.facing = suf
-            self.status = "walk" + suf
+            self.status = "attack" + suf
         elif self.direction.magnitude() > 0:
             self.facing = self._cardinal_suffix_from_vector(self.direction.x, self.direction.y)
             self.status = "walk" + self.facing
@@ -214,7 +219,12 @@ class Player(Entity):
     def animate(self, dt):
         status = self.status
         animation = None
-        if status.startswith("attack_") and self.combat_mode == "magic" and self.has_staff():
+        if (
+            status.startswith("attack_")
+            and self.current_action != "gathering"
+            and self.combat_mode == "magic"
+            and self.has_staff()
+        ):
             suf = status[len("attack") :]  # e.g. "_right"
             animation = self.animations.get("cast_spell" + suf) or []
         if not animation:
@@ -229,7 +239,10 @@ class Player(Entity):
         loop = (
             not status.startswith("hurt")
             and not status.startswith("death")
-            and not status.startswith("attack_")
+            and (
+                not status.startswith("attack_")
+                or self.current_action == "gathering"
+            )
         )
 
         self.frame_index += self.animation_speed * dt * 60
