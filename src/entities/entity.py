@@ -56,6 +56,8 @@ def resolve_collision_y(rect, obstacles):
                 rect.top = obs.bottom
 
 
+
+
 def depenetrate_rect(rect, obstacles, max_passes=8):
     """
     Resolve remaining AABB overlap after axis sliding (corner / multi-tile wedging).

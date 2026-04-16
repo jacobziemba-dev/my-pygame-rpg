@@ -79,6 +79,7 @@ class GameManager:
         self.show_fps_overlay = True
         self.running = True
         self.game_over = False
+        self._combat_message_cooldowns = {}
 
     def _get_random_walkable_tile(self, allow_water=False):
         """Find a random grid-aligned position. Ensuring land-only if allow_water is False."""
@@ -173,6 +174,14 @@ class GameManager:
             world_y = self.player.sprite_top_y
         self.ui.add_xp_drop(skill_name, amount, world_x, world_y, self.camera)
         return leveled_up
+
+    def _show_combat_message_with_cooldown(self, key, message, cooldown_ms=2500):
+        """Throttle noisy combat/system messages so chatbox stays readable."""
+        now = pygame.time.get_ticks()
+        last = self._combat_message_cooldowns.get(key, 0)
+        if now - last >= cooldown_ms:
+            self._combat_message_cooldowns[key] = now
+            self.ui.show_message(message)
 
     def run(self):
         while self.running:
@@ -319,13 +328,6 @@ class GameManager:
 
         options = []
 
-        from src.entities.resource_item import ResourceItem
-        from src.entities.resource_node import ResourceNode
-        from src.entities.enemy import Enemy
-        from src.entities.bank import Bank
-        from src.entities.station import Station
-        from src.entities.npc import NPC
-
         if entity is None:
             options.append({
                 "label": "Walk here",
@@ -349,8 +351,16 @@ class GameManager:
         elif isinstance(entity, ResourceNode):
             name = entity.node_type.replace("_", " ").title()
             action_verb = {
-                "tree": "Chop", "rock": "Mine", "iron_rock": "Mine",
-                "bush": "Search", "fishing_spot": "Fish"
+                "tree": "Chop",
+                "rock": "Mine",
+                "iron_rock": "Mine",
+                "coal_rock": "Mine",
+                "essence_rock": "Mine",
+                "bush": "Search",
+                "fishing_spot": "Fish",
+                "wheat_field": "Pick",
+                "chicken": "Collect",
+                "cow": "Milk",
             }.get(entity.node_type, "Gather")
             _e = entity
             options.append({
@@ -1158,25 +1168,14 @@ class GameManager:
         for npc in self.npcs:
             obstacles.append(npc.rect)
             
-        # Add tile-based obstacles (Water)
+        # Add tile-based obstacles (Water) from cached rects
         if full_map:
-            # Check entire map (used for pathfinding)
-            for x in range(self.tilemap.width):
-                for y in range(self.tilemap.height):
-                    if self.tilemap.world_map[x][y] == TILE_WATER:
-                        obstacles.append(pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+            obstacles.extend(getattr(self.tilemap, "water_rects", []))
         else:
-            # Optimized: only add tiles that are somewhat near the player/camera (used for frame-by-frame collision)
-            cam_x, cam_y = self.camera.camera_rect.x, self.camera.camera_rect.y
-            start_cx = max(0, (cam_x - 100) // TILE_SIZE)
-            end_cx = min(self.tilemap.width, (cam_x + SCREEN_WIDTH + 100) // TILE_SIZE)
-            start_cy = max(0, (cam_y - 100) // TILE_SIZE)
-            end_cy = min(self.tilemap.height, (cam_y + SCREEN_HEIGHT + 100) // TILE_SIZE)
-            
-            for x in range(start_cx, end_cx):
-                for y in range(start_cy, end_cy):
-                    if self.tilemap.world_map[x][y] == TILE_WATER:
-                        obstacles.append(pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+            # Collision only needs nearby water tiles
+            obstacles.extend(
+                self.tilemap.get_water_rects_in_world_rect(self.camera.camera_rect, padding_px=100)
+            )
                         
         return obstacles
 
@@ -1251,7 +1250,10 @@ class GameManager:
                                 )
                                 self.projectiles.append(proj)
                             else:
-                                self.ui.show_message("Out of arrows!")
+                                self._show_combat_message_with_cooldown(
+                                    "out_of_arrows",
+                                    "Out of arrows!",
+                                )
                                 self.player.current_action = None
                                 self.player.action_target = None
                         else:
@@ -1291,7 +1293,10 @@ class GameManager:
                                     proj.color = (0, 200, 255)
                                     self.projectiles.append(proj)
                                 else:
-                                    self.ui.show_message("Not enough runes!")
+                                    self._show_combat_message_with_cooldown(
+                                        "not_enough_runes",
+                                        "Not enough runes!",
+                                    )
                                     self.player.current_action = None
                                     self.player.action_target = None
                         else:
@@ -1309,11 +1314,8 @@ class GameManager:
                                 self._award_xp(primary, 5, self.player.rect.centerx, self.player.sprite_top_y)
                                 if secondary:
                                     self._award_xp(secondary, 2, self.player.rect.centerx, self.player.sprite_top_y)
-                                self.ui.show_message(f"Hit {enemy.name} for {dmg}!")
                                 if enemy.hp <= 0:
                                     self._kill_enemy(enemy)
-                            else:
-                                self.ui.show_message(f"Missed {enemy.name}!")
                         else:
                             # Enemy moved — keep attack state and chase them
                             self._update_chase_destination(enemy)
@@ -1334,10 +1336,11 @@ class GameManager:
                 enemy.update(self.player, dt, obstacles + [self.player.rect])
                 if enemy.rect.inflate(16, 16).colliderect(self.player.rect):
                     dmg = random.randint(1, enemy.max_hit)
-                    if self.player.take_damage(dmg):
-                        actual = max(1, dmg - self.player.get_defense())
+                    actual = max(1, dmg - self.player.get_defense())
+                    applied = self.player.take_damage(actual, already_mitigated=True)
+                    if applied > 0:
                         self._award_xp("defense", 3, self.player.rect.centerx, self.player.sprite_top_y)
-                        self.ui.show_message(f"{enemy.name} hits you for {actual}!")
+                        self.ui.show_message(f"{enemy.name} hits you for {applied}!")
                         # Auto-retaliate: fight back automatically when idle (OSRS default)
                         if self.player.current_action is None:
                             self.player.current_action = "attacking"
@@ -1356,14 +1359,11 @@ class GameManager:
                             leveled_up = self._award_xp(primary, 4, self.player.rect.centerx, self.player.sprite_top_y)
                             if secondary:
                                 self._award_xp(secondary, 2, self.player.rect.centerx, self.player.sprite_top_y)
-                            self.ui.show_message(f"Hit {proj.target.name} for {dmg}!")
                             if leveled_up:
                                 lvl = getattr(self.player.skills, primary).level
                                 self.ui.show_message(f"{primary.capitalize()} level up! Now level {lvl}")
                             if proj.target.hp <= 0:
                                 self._kill_enemy(proj.target)
-                        else:
-                            self.ui.show_message(f"Missed {proj.target.name}!")
                     self.projectiles.remove(proj)
         else:
             # Player is dead: start fade and respawn sequence

@@ -473,11 +473,16 @@ class Player(Entity):
         """World Y of the top edge of the drawn sprite (feet aligned to rect.bottom)."""
         return self.rect.bottom - PLAYER_SPRITE_SIZE
 
-    def take_damage(self, amount):
+    def take_damage(self, amount, already_mitigated=False):
         current_time = pygame.time.get_ticks()
         if current_time - self.last_hit_time > 1000:
-            # apply defense
-            actual_damage = max(1, amount - self.get_defense())
+            # apply defense unless the caller already mitigated the hit
+            if already_mitigated:
+                actual_damage = max(0, int(amount))
+            else:
+                actual_damage = max(1, int(amount) - self.get_defense())
+            if actual_damage <= 0:
+                return 0
             self.hp -= actual_damage
             if self.hp < 0:
                 self.hp = 0
@@ -487,8 +492,8 @@ class Player(Entity):
             else:
                 self.hurt_until = current_time + 450
                 self.frame_index = 0
-            return True
-        return False
+            return actual_damage
+        return 0
 
     def get_attack(self):
         attack = self.base_attack

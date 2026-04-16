@@ -45,6 +45,44 @@ class TileMap:
                         self.world_map[x][y] = TILE_DIRT
                     else:
                         self.world_map[x][y] = TILE_GRASS
+        # Map changed, refresh cached collision geometry
+        self._rebuild_collision_cache()
+
+    def _rebuild_collision_cache(self):
+        """Precompute collision rects for water tiles.
+
+        GameManager/pathfinding queries these frequently; caching avoids allocating
+        thousands of Rects repeatedly.
+        """
+        self.water_rects = []
+        self.water_rect_rows = [[] for _ in range(self.height)]
+        for x in range(self.width):
+            for y in range(self.height):
+                if self.world_map[x][y] == TILE_WATER:
+                    r = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                    self.water_rects.append(r)
+                    self.water_rect_rows[y].append(r)
+
+    def get_water_rects_in_world_rect(self, world_rect, padding_px=0):
+        """Return cached water rects intersecting a region (plus padding)."""
+        if padding_px:
+            region = pygame.Rect(
+                world_rect.x - padding_px,
+                world_rect.y - padding_px,
+                world_rect.w + padding_px * 2,
+                world_rect.h + padding_px * 2,
+            )
+        else:
+            region = world_rect
+
+        y0 = max(0, region.top // TILE_SIZE)
+        y1 = min(self.height - 1, (region.bottom - 1) // TILE_SIZE)
+        out = []
+        for y in range(y0, y1 + 1):
+            for r in self.water_rect_rows[y]:
+                if r.colliderect(region):
+                    out.append(r)
+        return out
 
     def is_walkable(self, world_x, world_y):
         """Check if a world coordinate is walkable (not water)."""
